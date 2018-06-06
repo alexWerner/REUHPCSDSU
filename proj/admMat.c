@@ -3,30 +3,32 @@ static char help[] = "Creation of Admittance Matrix.\n\n";
 
 #include <petscksp.h>
 
-
+PetscInt* intArray(PetscInt n);
+PetscErrorCode makeMatrix(Mat *m, PetscInt rows, PetscInt cols, PetscComplex *vals, PetscErrorCode ierr);
+PetscErrorCode makeVector(Vec *v, PetscInt n, PetscErrorCode ierr);
 
 int main(int argc,char **argv)
 {
-  Mat bus_data, gen_data, branch_data, gen_cost;
+  Mat bus_data, branch_data;
   PetscScalar baseMVA = 100;
 
 
   //bus column indices
-  PetscScalar PQ = 1,   //Bus Types
-              PV = 2,   //
-              REF = 3,  //
-              NONE = 4, //
-              BUS_I = 0,    //Bus Number
-              BUS_TYPE = 1, //Bus Type
-              PD = 2,       //Real Power Demand (MW)
-              QD = 3,       //Reactive Power Demand (MVar)
-              GS = 4,       //Shunt Conductance
-              BS = 5,       //Shunt Susceptance
-              VM = 6,       //Voltage Magnitude (p.u.)
-              VA = 7,       //Voltage Angle (degrees)
-              BASE_KV = 8,  //Base Voltage (kV)
-              VMAX = 9,    //Maximum Voltage Magnitude
-              VMIN = 10;    //Minimum Voltage Magnitude
+              //PQ = 1,   //Bus Types
+              //PV = 2,   //
+              //REF = 3,  //
+              //NONE = 4, //
+              //BUS_I = 0,    //Bus Number
+              //BUS_TYPE = 1, //Bus Type
+              //PD = 2,       //Real Power Demand (MW)
+              //QD = 3,       //Reactive Power Demand (MVar)
+  PetscScalar GS = 4,       //Shunt Conductance
+              BS = 5;       //Shunt Susceptance
+              //VM = 6,       //Voltage Magnitude (p.u.)
+              //VA = 7,       //Voltage Angle (degrees)
+              //BASE_KV = 8,  //Base Voltage (kV)
+              //VMAX = 9,    //Maximum Voltage Magnitude
+              //VMIN = 10;    //Minimum Voltage Magnitude
 
   PetscComplex busVals[55] =
     { 1,  2,  0,    0,      0,  0,  1,  0,  230,  1.1,  0.9,
@@ -41,12 +43,12 @@ int main(int argc,char **argv)
               T_BUS = 1,    //To Bus Number
               BR_R = 2,     //Resistance
               BR_X = 3,     //Reactance
-              BR_B = 4,     //Total Line Chargin Susceptance
-              RATE_A = 5,   //MVA Rating A (Long Term Rating)
-              RATE_B = 6,   //MVA Rating B (Short Term Rating)
-              RATE_C = 7,   //MVA Rating C (Emergency Rating)
-              ANGMIN = 8,   //Minimum Angle Difference
-              ANGMAX = 9;  //Maximum Angle Difference
+              BR_B = 4;     //Total Line Chargin Susceptance
+              //RATE_A = 5,   //MVA Rating A (Long Term Rating)
+              //RATE_B = 6,   //MVA Rating B (Short Term Rating)
+              //RATE_C = 7,   //MVA Rating C (Emergency Rating)
+              //ANGMIN = 8,   //Minimum Angle Difference
+              //ANGMAX = 9;  //Maximum Angle Difference
 
   PetscComplex branchVals[78] =
     { 1,  2,  0.00281,  0.0281, 0.00712,  400,  400,  400,  0,  0,  1,  -360, 360,
@@ -64,9 +66,6 @@ int main(int argc,char **argv)
   //Fill matrices with given values from 5gen problem
   ierr = makeMatrix(&bus_data, 5, 11, busVals, ierr);
   ierr = makeMatrix(&branch_data, 6, 13, branchVals, ierr);
-
-  //ierr = MatView(bus_data, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-  //ierr = MatView(branch_data, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
 
   //nb = size(bus_data, 1);
@@ -198,7 +197,35 @@ int main(int argc,char **argv)
 
 
   //Ybus = Cf' * Yf + Ct' * Yt + sparse(1:nb, 1:nb, Ysh, nb, nb);
+  Mat Ybus, CfTYf, CtTYt, YbusWork;
+  ierr = MatCreate(PETSC_COMM_WORLD, &Ybus);CHKERRQ(ierr);
+  ierr = MatSetSizes(Ybus, PETSC_DECIDE, PETSC_DECIDE, nb, nb);CHKERRQ(ierr);
+  ierr = MatSetType(Ybus, MATMPIAIJ);CHKERRQ(ierr);
+  ierr = MatMPIAIJSetPreallocation(Ybus, nb, NULL, nb, NULL);CHKERRQ(ierr); //Change this if a better number is found
 
+  ierr = MatTransposeMatMult(Cf, Yf, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &CfTYf);CHKERRQ(ierr);
+  ierr = MatTransposeMatMult(Ct, Yt, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &CtTYt);CHKERRQ(ierr);
+
+  ierr = MatCreate(PETSC_COMM_WORLD, &YbusWork);CHKERRQ(ierr);
+  ierr = MatSetSizes(YbusWork, PETSC_DECIDE, PETSC_DECIDE, nb, nb);CHKERRQ(ierr);
+  ierr = MatSetType(YbusWork, MATMPIAIJ);CHKERRQ(ierr);
+  ierr = MatMPIAIJSetPreallocation(YbusWork, 1, NULL, 1, NULL);CHKERRQ(ierr);
+
+  PetscScalar const *YshArr;
+  ierr = VecGetArrayRead(Ysh, &YshArr);CHKERRQ(ierr);
+  for(PetscInt i = 0; i < nb; i++)
+  {
+    ierr = MatSetValue(YbusWork, i, i, YshArr[i], INSERT_VALUES);CHKERRQ(ierr);
+  }
+  ierr = VecRestoreArrayRead(Ysh, &YshArr);CHKERRQ(ierr);
+  ierr = MatAssemblyBegin(YbusWork, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(YbusWork, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+  ierr = MatAXPY(YbusWork, 1, CtTYt, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
+  ierr = MatAXPY(YbusWork, 1, CfTYf, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
+  ierr = MatCopy(YbusWork, Ybus, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
+
+  ierr = MatView(Ybus, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
 
 
@@ -217,9 +244,14 @@ int main(int argc,char **argv)
   ierr = MatDestroy(&Ct);CHKERRQ(ierr);
   ierr = MatDestroy(&Yf);CHKERRQ(ierr);
   ierr = MatDestroy(&Yt);CHKERRQ(ierr);
+  ierr = MatDestroy(&Ybus);CHKERRQ(ierr);
+  ierr = MatDestroy(&CfTYf);CHKERRQ(ierr);
+  ierr = MatDestroy(&CtTYt);CHKERRQ(ierr);
+  ierr = MatDestroy(&YbusWork);CHKERRQ(ierr);
   ierr = PetscFinalize();CHKERRQ(ierr);
   return ierr;
 }
+
 
 
 //Return an array {0, 1, 2, ..., n-1}
@@ -253,4 +285,5 @@ PetscErrorCode makeVector(Vec *v, PetscInt n, PetscErrorCode ierr)
   ierr = VecCreate(PETSC_COMM_WORLD, v);
   ierr = VecSetSizes(*v,PETSC_DECIDE, n);CHKERRQ(ierr);
   ierr = VecSetFromOptions(*v);CHKERRQ(ierr);
+  return ierr;
 }
