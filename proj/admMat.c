@@ -6,6 +6,7 @@ static char help[] = "Creation of Admittance Matrix.\n\n";
 PetscInt* intArray(PetscInt n);
 PetscErrorCode makeMatrix(Mat *m, PetscInt rows, PetscInt cols, PetscComplex *vals, PetscErrorCode ierr);
 PetscErrorCode makeVector(Vec *v, PetscInt n, PetscErrorCode ierr);
+PetscErrorCode makeSparse(Mat *m, PetscInt rows, PetscInt cols, PetscInt nzD, PetscInt nzO, PetscErrorCode ierr);
 
 int main(int argc,char **argv)
 {
@@ -58,11 +59,9 @@ int main(int argc,char **argv)
       3,  4,  0.00297,  0.0297, 0.00674,  0,    0,    0,    0,  0,  1,  -360, 360,
       4,  5,  0.00297,  0.0297, 0.00674,  240,  240,  240,  0,  0,  1,  -360, 360};
 
-
   PetscErrorCode ierr;
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);CHKERRQ(ierr);
-
 
   ierr = makeMatrix(&bus_data, 5, 11, busVals, ierr);
   ierr = makeMatrix(&branch_data, 6, 13, branchVals, ierr);
@@ -93,8 +92,6 @@ int main(int argc,char **argv)
   ierr = MatGetColumnVector(branch_data, Bc, BR_B);CHKERRQ(ierr);
 
 
-
-
   //Ytt = Ys + 1j * Bc / 2;
   //Yff = Ytt;
   //Yft = - Ys;
@@ -105,13 +102,11 @@ int main(int argc,char **argv)
   ierr = VecDuplicate(Ytt, &Yft);CHKERRQ(ierr);
   ierr = VecDuplicate(Ytt, &Ytf);CHKERRQ(ierr);
 
-  //ierr = VecScale(Bc, PETSC_i / 2);CHKERRQ(ierr);
   ierr = VecWAXPY(Ytt, PETSC_i / 2, Bc, Ys);CHKERRQ(ierr);
   ierr = VecCopy(Ytt, Yff);CHKERRQ(ierr);
   ierr = VecCopy(Ys, Yft);CHKERRQ(ierr);
   ierr = VecScale(Yft, -1);CHKERRQ(ierr);
   ierr = VecCopy(Yft, Ytf);CHKERRQ(ierr);
-
 
 
   //Ysh = (bus_data(:, GS) + 1j * bus_data(:, BS)) / baseMVA;
@@ -141,27 +136,11 @@ int main(int argc,char **argv)
   //i = [1:nl; 1:nl]';  I skipped this line and implemented Yf and Yt in a different way
   //Yf = sparse(i, [f; t], [Yff; Yft], nl, nb);
   //Yt = sparse(i, [f; t], [Ytf; Ytt], nl, nb);
-  Mat Cf, Ct;
-  ierr = MatCreate(PETSC_COMM_WORLD, &Cf);CHKERRQ(ierr);
-  ierr = MatSetSizes(Cf, PETSC_DECIDE, PETSC_DECIDE, nl, nb);CHKERRQ(ierr);
-  ierr = MatSetType(Cf, MATMPIAIJ);CHKERRQ(ierr);
-  ierr = MatMPIAIJSetPreallocation(Cf, 1, NULL, 1, NULL);CHKERRQ(ierr);
-
-  ierr = MatCreate(PETSC_COMM_WORLD, &Ct);CHKERRQ(ierr);
-  ierr = MatSetSizes(Ct, PETSC_DECIDE, PETSC_DECIDE, nl, nb);CHKERRQ(ierr);
-  ierr = MatSetType(Ct, MATMPIAIJ);CHKERRQ(ierr);
-  ierr = MatMPIAIJSetPreallocation(Ct, 1, NULL, 1, NULL);CHKERRQ(ierr);
-
-  Mat Yf, Yt;
-  ierr = MatCreate(PETSC_COMM_WORLD, &Yf);CHKERRQ(ierr);
-  ierr = MatSetSizes(Yf, PETSC_DECIDE, PETSC_DECIDE, nl, nb);CHKERRQ(ierr);
-  ierr = MatSetType(Yf, MATMPIAIJ);CHKERRQ(ierr);
-  ierr = MatMPIAIJSetPreallocation(Yf, 2, NULL, 2, NULL);CHKERRQ(ierr);
-
-  ierr = MatCreate(PETSC_COMM_WORLD, &Yt);CHKERRQ(ierr);
-  ierr = MatSetSizes(Yt, PETSC_DECIDE, PETSC_DECIDE, nl, nb);CHKERRQ(ierr);
-  ierr = MatSetType(Yt, MATMPIAIJ);CHKERRQ(ierr);
-  ierr = MatMPIAIJSetPreallocation(Yt, 2, NULL, 2, NULL);CHKERRQ(ierr);
+  Mat Cf, Ct, Yf, Yt;
+  ierr = makeSparse(&Cf, nl, nb, 1, 1, ierr);CHKERRQ(ierr);
+  ierr = makeSparse(&Ct, nl, nb, 1, 1, ierr);CHKERRQ(ierr);
+  ierr = makeSparse(&Yf, nl, nb, 2, 2, ierr);CHKERRQ(ierr);
+  ierr = makeSparse(&Yt, nl, nb, 2, 2, ierr);CHKERRQ(ierr);
 
   PetscScalar const *fArr;
   PetscScalar const *tArr;
@@ -201,21 +180,12 @@ int main(int argc,char **argv)
   ierr = MatAssemblyEnd(Yt, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
 
-
   //Ybus = Cf' * Yf + Ct' * Yt + sparse(1:nb, 1:nb, Ysh, nb, nb);
-  Mat Ybus, CfTYf, CtTYt, YbusWork;
-  ierr = MatCreate(PETSC_COMM_WORLD, &Ybus);CHKERRQ(ierr);
-  ierr = MatSetSizes(Ybus, PETSC_DECIDE, PETSC_DECIDE, nb, nb);CHKERRQ(ierr);
-  ierr = MatSetType(Ybus, MATMPIAIJ);CHKERRQ(ierr);
-  ierr = MatMPIAIJSetPreallocation(Ybus, nb, NULL, nb, NULL);CHKERRQ(ierr); //Change this if a better number is found
+  Mat Ybus, CfTYf, CtTYt;
+  ierr = makeSparse(&Ybus, nb, nb, nb, nb, ierr);CHKERRQ(ierr); //Change this if a better number is found
 
   ierr = MatTransposeMatMult(Cf, Yf, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &CfTYf);CHKERRQ(ierr);
   ierr = MatTransposeMatMult(Ct, Yt, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &CtTYt);CHKERRQ(ierr);
-
-  ierr = MatCreate(PETSC_COMM_WORLD, &YbusWork);CHKERRQ(ierr);
-  ierr = MatSetSizes(YbusWork, PETSC_DECIDE, PETSC_DECIDE, nb, nb);CHKERRQ(ierr);
-  ierr = MatSetType(YbusWork, MATMPIAIJ);CHKERRQ(ierr);
-  ierr = MatMPIAIJSetPreallocation(YbusWork, 1, NULL, 1, NULL);CHKERRQ(ierr);
 
   PetscScalar const *YshArr;
   ierr = VecGetArrayRead(Ysh, &YshArr);CHKERRQ(ierr);
@@ -223,18 +193,14 @@ int main(int argc,char **argv)
   for(PetscInt i = min; i < max; i++)
   {
     if(max != min)
-      ierr = MatSetValue(YbusWork, i, i, YshArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
+      ierr = MatSetValue(Ybus, i, i, YshArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
   }
   ierr = VecRestoreArrayRead(Ysh, &YshArr);CHKERRQ(ierr);
-  ierr = MatAssemblyBegin(YbusWork, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(YbusWork, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyBegin(Ybus, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(Ybus, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
-  ierr = MatAXPY(YbusWork, 1, CtTYt, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
-  ierr = MatAXPY(YbusWork, 1, CfTYf, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
-  ierr = MatCopy(YbusWork, Ybus, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
-
-
-
+  ierr = MatAXPY(Ybus, 1, CtTYt, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
+  ierr = MatAXPY(Ybus, 1, CfTYf, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
 
 
   //View Ybus
@@ -243,8 +209,6 @@ int main(int argc,char **argv)
   ierr = MatView(Ybus, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
   ierr = MatView(Ybus, view);CHKERRQ(ierr);
   ierr = PetscViewerDestroy(&view);CHKERRQ(ierr);
-
-
 
 
   //Deallocate memory
@@ -266,11 +230,9 @@ int main(int argc,char **argv)
   ierr = MatDestroy(&Ybus);CHKERRQ(ierr);
   ierr = MatDestroy(&CfTYf);CHKERRQ(ierr);
   ierr = MatDestroy(&CtTYt);CHKERRQ(ierr);
-  ierr = MatDestroy(&YbusWork);CHKERRQ(ierr);
   ierr = PetscFinalize();CHKERRQ(ierr);
   return ierr;
 }
-
 
 
 //Return an array {0, 1, 2, ..., n-1}
@@ -283,6 +245,7 @@ PetscInt* intArray(PetscInt n)
   }
   return arr;
 }
+
 
 PetscErrorCode makeMatrix(Mat *m, PetscInt rows, PetscInt cols, PetscComplex *vals, PetscErrorCode ierr)
 {
@@ -299,10 +262,21 @@ PetscErrorCode makeMatrix(Mat *m, PetscInt rows, PetscInt cols, PetscComplex *va
   return ierr;
 }
 
+
 PetscErrorCode makeVector(Vec *v, PetscInt n, PetscErrorCode ierr)
 {
   ierr = VecCreate(PETSC_COMM_WORLD, v);
   ierr = VecSetSizes(*v,PETSC_DECIDE, n);CHKERRQ(ierr);
   ierr = VecSetFromOptions(*v);CHKERRQ(ierr);
+  return ierr;
+}
+
+
+PetscErrorCode makeSparse(Mat *m, PetscInt rows, PetscInt cols, PetscInt nzD, PetscInt nzO, PetscErrorCode ierr)
+{
+  ierr = MatCreate(PETSC_COMM_WORLD, m);CHKERRQ(ierr);
+  ierr = MatSetSizes(*m, PETSC_DECIDE, PETSC_DECIDE, rows, cols);CHKERRQ(ierr);
+  ierr = MatSetType(*m, MATMPIAIJ);CHKERRQ(ierr);
+  ierr = MatMPIAIJSetPreallocation(*m, nzD, NULL, nzO, NULL);CHKERRQ(ierr);
   return ierr;
 }
