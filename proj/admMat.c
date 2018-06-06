@@ -63,7 +63,7 @@ int main(int argc,char **argv)
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);CHKERRQ(ierr);
 
-  //Fill matrices with given values from 5gen problem
+
   ierr = makeMatrix(&bus_data, 5, 11, busVals, ierr);
   ierr = makeMatrix(&branch_data, 6, 13, branchVals, ierr);
 
@@ -168,18 +168,20 @@ int main(int argc,char **argv)
   PetscScalar const *YffArr;
   PetscScalar const *YftArr;
   PetscScalar one = 1.0;
+  PetscInt max, min;
   ierr = VecGetArrayRead(f, &fArr);CHKERRQ(ierr);
   ierr = VecGetArrayRead(t, &tArr);CHKERRQ(ierr);
   ierr = VecGetArrayRead(Yff, &YffArr);CHKERRQ(ierr);
   ierr = VecGetArrayRead(Yft, &YftArr);CHKERRQ(ierr);
-  for(PetscInt i = 0; i < nl; i++)
+  ierr = MatGetOwnershipRange(Cf, &min, &max);CHKERRQ(ierr);
+  for(PetscInt i = min; i < max; i++)
   {
-    ierr = MatSetValue(Cf, i, fArr[i]-1, one, INSERT_VALUES);CHKERRQ(ierr);
-    ierr = MatSetValue(Ct, i, tArr[i]-1, one, INSERT_VALUES);CHKERRQ(ierr);
-    ierr = MatSetValue(Yf, i, fArr[i]-1, YffArr[i], INSERT_VALUES);CHKERRQ(ierr);
-    ierr = MatSetValue(Yf, i, tArr[i]-1, YftArr[i], INSERT_VALUES);CHKERRQ(ierr);
-    ierr = MatSetValue(Yt, i, fArr[i]-1, -1 * YffArr[i], INSERT_VALUES);CHKERRQ(ierr);
-    ierr = MatSetValue(Yt, i, tArr[i]-1, -1 * YftArr[i], INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatSetValue(Cf, i, fArr[i - min]-1, one, INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatSetValue(Ct, i, tArr[i - min]-1, one, INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatSetValue(Yf, i, fArr[i - min]-1, YffArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatSetValue(Yf, i, tArr[i - min]-1, YftArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatSetValue(Yt, i, fArr[i - min]-1, -1 * YffArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatSetValue(Yt, i, tArr[i - min]-1, -1 * YftArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
   }
   ierr = VecRestoreArrayRead(f, &fArr);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(t, &tArr);CHKERRQ(ierr);
@@ -194,6 +196,9 @@ int main(int argc,char **argv)
   ierr = MatAssemblyEnd(Ct, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(Yf, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(Yt, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+  ierr = PetscPrintf(PETSC_COMM_SELF, "Cf: max: %d, min: %d", max, min);CHKERRQ(ierr);
+  ierr = MatView(Cf, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
 
   //Ybus = Cf' * Yf + Ct' * Yt + sparse(1:nb, 1:nb, Ysh, nb, nb);
@@ -227,6 +232,7 @@ int main(int argc,char **argv)
 
   PetscViewer view;
   ierr = PetscViewerASCIIOpen(PETSC_COMM_WORLD, "Ybus", &view);CHKERRQ(ierr);
+  ierr = MatView(Ybus, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
   ierr = MatView(Ybus, view);CHKERRQ(ierr);
   ierr = PetscViewerDestroy(&view);CHKERRQ(ierr);
 
