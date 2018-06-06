@@ -225,8 +225,10 @@ int main(int argc,char **argv)
   ierr = MatAXPY(YbusWork, 1, CfTYf, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
   ierr = MatCopy(YbusWork, Ybus, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
 
-  ierr = MatView(Ybus, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-
+  PetscViewer view;
+  ierr = PetscViewerASCIIOpen(PETSC_COMM_WORLD, "Ybus", &view);CHKERRQ(ierr);
+  ierr = MatView(Ybus, view);CHKERRQ(ierr);
+  ierr = PetscViewerDestroy(&view);CHKERRQ(ierr);
 
 
   ierr = VecDestroy(&Ysh);CHKERRQ(ierr);
