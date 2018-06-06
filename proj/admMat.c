@@ -201,6 +201,8 @@ int main(int argc,char **argv)
 
   ierr = MatAXPY(Ybus, 1, CtTYt, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
   ierr = MatAXPY(Ybus, 1, CfTYf, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
+  ierr = MatDestroy(&CfTYf);CHKERRQ(ierr);
+  ierr = MatDestroy(&CtTYt);CHKERRQ(ierr);
 
 
   //View Ybus
@@ -228,8 +230,6 @@ int main(int argc,char **argv)
   ierr = MatDestroy(&Yf);CHKERRQ(ierr);
   ierr = MatDestroy(&Yt);CHKERRQ(ierr);
   ierr = MatDestroy(&Ybus);CHKERRQ(ierr);
-  ierr = MatDestroy(&CfTYf);CHKERRQ(ierr);
-  ierr = MatDestroy(&CtTYt);CHKERRQ(ierr);
   ierr = PetscFinalize();CHKERRQ(ierr);
   return ierr;
 }
