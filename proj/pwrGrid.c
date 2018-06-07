@@ -12,7 +12,7 @@ int main(int argc,char **argv)
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);CHKERRQ(ierr);
 
-  ierr = loadMatrices(&branch_data, &bus_data, &gen_cost, &gen_data);CHKERRQ(ierr);
+  ierr = loadMatrices(&branch_data, &bus_data);CHKERRQ(ierr);
 
   //bus column indices
               //PQ = 1,   //Bus Types
@@ -47,7 +47,7 @@ int main(int argc,char **argv)
   PetscInt nb;
   Mat Cf, Ct, Yf, Yt, Ybus;
 
-  ierr = makeAdmMat(bus_data, branch_data, GS, BS, F_BUS, T_BUS, BR_R,
+  ierr = makeAdmMat(branch_data, bus_data, GS, BS, F_BUS, T_BUS, BR_R,
     BR_X, BR_B, baseMVA, &nb, &Cf, &Ct, &Yf, &Yt, &Ybus);CHKERRQ(ierr);
 
   ierr = MatView(Ybus, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
