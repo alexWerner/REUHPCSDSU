@@ -5,14 +5,14 @@ static char help[] = "Power grid simulation";
 
 int main(int argc,char **argv)
 {
-  Mat bus_data, branch_data;
+  Mat bus_data, branch_data, gen_cost, gen_data;
   PetscScalar baseMVA = 100;
 
   PetscErrorCode ierr;
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);CHKERRQ(ierr);
 
-  ierr = loadMatrices(&bus_data, &branch_data);CHKERRQ(ierr);
+  ierr = loadMatrices(&branch_data, &bus_data, &gen_cost, &gen_data);CHKERRQ(ierr);
 
   //bus column indices
               //PQ = 1,   //Bus Types
@@ -52,6 +52,8 @@ int main(int argc,char **argv)
 
   ierr = MatView(Ybus, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
+  //ierr =
+
   ierr = MatDestroy(&Cf);CHKERRQ(ierr);
   ierr = MatDestroy(&Ct);CHKERRQ(ierr);
   ierr = MatDestroy(&Yf);CHKERRQ(ierr);
@@ -59,6 +61,8 @@ int main(int argc,char **argv)
   ierr = MatDestroy(&Ybus);CHKERRQ(ierr);
   ierr = MatDestroy(&branch_data);CHKERRQ(ierr);
   ierr = MatDestroy(&bus_data);CHKERRQ(ierr);
+  ierr = MatDestroy(&gen_cost);CHKERRQ(ierr);
+  ierr = MatDestroy(&gen_data);CHKERRQ(ierr);
 
   ierr = PetscFinalize();CHKERRQ(ierr);
 
