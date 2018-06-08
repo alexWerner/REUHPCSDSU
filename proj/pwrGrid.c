@@ -22,8 +22,8 @@ int main(int argc,char **argv)
               //NONE = 4, //
               //BUS_I = 0,    //Bus Number
   PetscScalar BUS_TYPE = 1, //Bus Type
-              //PD = 2,       //Real Power Demand (MW)
-              //QD = 3,       //Reactive Power Demand (MVar)
+              PD = 2,       //Real Power Demand (MW)
+              QD = 3,       //Reactive Power Demand (MVar)
               GS = 4,       //Shunt Conductance
               BS = 5,       //Shunt Susceptance
               VM = 6,       //Voltage Magnitude (p.u.)
@@ -45,10 +45,10 @@ int main(int argc,char **argv)
               //ANGMAX = 9;  //Maximum Angle Difference
 
   //gen column indices
-              //GEN_BUS = 0,    //bus number
+  PetscScalar GEN_BUS = 0,    //bus number
               //PG = 1,         //real power output
               //QG = 2,         //reactive power output
-  PetscScalar QMAX = 3,       //maximum reactive power output at Pmin
+              QMAX = 3,       //maximum reactive power output at Pmin
               QMIN = 4,       //minimum reactive power output at Pmin
               //VG = 5,         //voltage magnitued setpoint
               //MBASE = 6,      //total MVA base of this machine
@@ -69,17 +69,31 @@ int main(int argc,char **argv)
 
 
 
-  Vec x, xmin, xmax;
+  Vec x, xmin, xmax, Pg, Qg;
   ierr = makeVector(&x, nb*4);CHKERRQ(ierr);
   ierr = makeVector(&xmin, nb*4);CHKERRQ(ierr);
   ierr = makeVector(&xmax, nb*4);CHKERRQ(ierr);
+  ierr = makeVector(&Pg, nb);CHKERRQ(ierr);
+  ierr = makeVector(&Qg, nb);CHKERRQ(ierr);
 
   ierr = setupConstraints(nb, bus_data, gen_data, BUS_TYPE, VA, VM, PMAX, PMIN,
-    QMAX, QMIN, &x, &xmin, &xmax);CHKERRQ(ierr);
+    QMAX, QMIN, &x, &xmin, &xmax, &Pg, &Qg);CHKERRQ(ierr);
 
-  
+
   PetscInt il[nl], nl2;
   ierr = getLimitedLines(branch_data, RATE_A, nl, il, &nl2);CHKERRQ(ierr);
+
+
+
+  Vec h, g, gn, hn, Sf, St;
+  Mat dh, dg, dSf_dVa, dSf_dVm, dSt_dVm, dSt_dVa;
+  calcFirstDerivative(x, Ybus, bus_data, gen_data, branch_data, il, Yf, Yt,
+    baseMVA, xmax, xmin, GEN_BUS, PD, QD, F_BUS, T_BUS, RATE_A, Pg, Qg, &h, &g,
+    &dh, &dg, &gn, &hn, &dSf_dVa, &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
+
+
+
+
 
 
   ierr = MatDestroy(&Cf);CHKERRQ(ierr);
@@ -94,6 +108,8 @@ int main(int argc,char **argv)
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = VecDestroy(&xmin);CHKERRQ(ierr);
   ierr = VecDestroy(&xmax);CHKERRQ(ierr);
+  ierr = VecDestroy(&Pg);CHKERRQ(ierr);
+  ierr = VecDestroy(&Qg);CHKERRQ(ierr);
 
   ierr = PetscFinalize();CHKERRQ(ierr);
 
