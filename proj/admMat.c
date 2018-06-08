@@ -2,16 +2,9 @@
 
 PetscErrorCode makeAdmMat(Mat bus_data, Mat branch_data, PetscScalar GS, PetscScalar BS,
   PetscScalar F_BUS, PetscScalar T_BUS, PetscScalar BR_R, PetscScalar BR_X, PetscScalar BR_B,
-  PetscScalar baseMVA, PetscInt *nb, Mat * Cf, Mat *Ct, Mat *Yf, Mat *Yt, Mat *Ybus)
+  PetscScalar baseMVA, PetscInt nb, PetscInt nl, Mat * Cf, Mat *Ct, Mat *Yf, Mat *Yt, Mat *Ybus)
 {
   PetscErrorCode ierr;
-
-  //nb = size(bus_data, 1);
-  //nl = size(branch_data, 1);
-  PetscInt nl;
-  ierr = MatGetSize(bus_data, nb, NULL);CHKERRQ(ierr);
-  ierr = MatGetSize(branch_data, &nl, NULL);CHKERRQ(ierr);
-
 
   //Ys = 1 ./ (branch_data(:, BR_R) + 1j * branchdata(:, BR_X));
   Vec Ys, YsWork;
@@ -50,7 +43,7 @@ PetscErrorCode makeAdmMat(Mat bus_data, Mat branch_data, PetscScalar GS, PetscSc
 
   //Ysh = (bus_data(:, GS) + 1j * bus_data(:, BS)) / baseMVA;
   Vec Ysh, YshWork;
-  ierr = makeVector(&Ysh, *nb);CHKERRQ(ierr);
+  ierr = makeVector(&Ysh, nb);CHKERRQ(ierr);
   ierr = VecDuplicate(Ysh, &YshWork);CHKERRQ(ierr);
 
   ierr = MatGetColumnVector(bus_data, Ysh, GS);CHKERRQ(ierr);
@@ -75,10 +68,10 @@ PetscErrorCode makeAdmMat(Mat bus_data, Mat branch_data, PetscScalar GS, PetscSc
   //i = [1:nl; 1:nl]';  I skipped this line and implemented Yf and Yt in a different way
   //Yf = sparse(i, [f; t], [Yff; Yft], nl, nb);
   //Yt = sparse(i, [f; t], [Ytf; Ytt], nl, nb);
-  ierr = makeSparse(Cf, nl, *nb, 1, 1);CHKERRQ(ierr);
-  ierr = makeSparse(Ct, nl, *nb, 1, 1);CHKERRQ(ierr);
-  ierr = makeSparse(Yf, nl, *nb, 2, 2);CHKERRQ(ierr);
-  ierr = makeSparse(Yt, nl, *nb, 2, 2);CHKERRQ(ierr);
+  ierr = makeSparse(Cf, nl, nb, 1, 1);CHKERRQ(ierr);
+  ierr = makeSparse(Ct, nl, nb, 1, 1);CHKERRQ(ierr);
+  ierr = makeSparse(Yf, nl, nb, 2, 2);CHKERRQ(ierr);
+  ierr = makeSparse(Yt, nl, nb, 2, 2);CHKERRQ(ierr);
 
   PetscScalar const *fArr;
   PetscScalar const *tArr;
@@ -117,7 +110,7 @@ PetscErrorCode makeAdmMat(Mat bus_data, Mat branch_data, PetscScalar GS, PetscSc
 
   //Ybus = Cf' * Yf + Ct' * Yt + sparse(1:nb, 1:nb, Ysh, nb, nb);
   Mat CfTYf, CtTYt;
-  ierr = makeSparse(Ybus, *nb, *nb, 1, 0);CHKERRQ(ierr); //Change this if a better number is found
+  ierr = makeSparse(Ybus, nb, nb, 1, 0);CHKERRQ(ierr); //Change this if a better number is found
 
   ierr = MatTransposeMatMult(*Cf, *Yf, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &CfTYf);CHKERRQ(ierr);
   ierr = MatTransposeMatMult(*Ct, *Yt, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &CtTYt);CHKERRQ(ierr);
@@ -157,7 +150,7 @@ PetscErrorCode makeVector(Vec *v, PetscInt n)
   PetscErrorCode ierr;
   ierr = VecCreate(PETSC_COMM_WORLD, v);
   ierr = VecSetSizes(*v,PETSC_DECIDE, n);CHKERRQ(ierr);
-  ierr = VecSetFromOptions(*v);CHKERRQ(ierr);
+  ierr = VecSetUp(*v);CHKERRQ(ierr);
   return ierr;
 }
 

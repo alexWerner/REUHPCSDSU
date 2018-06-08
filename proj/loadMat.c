@@ -17,14 +17,29 @@ PetscComplex busVals[55] =
     4,  3,  400,  131.47, 0,  0,  1,  0,  230,  1.1,  0.9,
     5,  2,  0,    0,      0,  0,  1,  0,  230,  1.1,  0.9};
 
+PetscComplex costVals[30] =
+  { 2, 0, 0, 2, 14, 0,
+    2, 0, 0, 2, 15, 0,
+    2, 0, 0, 2, 30, 0,
+    2, 0, 0, 2, 40, 0,
+    2, 0, 0, 2, 10, 0};
+
+PetscComplex genVals[50] =
+  { 1, 40,      0, 30,    -30,    1, 100, 1, 40,  0,
+    1, 170,     0, 127.5, -127.5, 1, 100, 1, 170, 0,
+    3, 323.49,  0, 390,   -390,   1, 100, 1, 520, 0,
+    4, 0,       0, 150,   -150,   1, 100, 1, 200, 0,
+    5, 466.51,  0, 450,   -450,   1, 100, 1, 600, 0};
 
 
-PetscErrorCode loadMatrices(Mat *bus_data, Mat *branch_data)
+PetscErrorCode loadMatrices(Mat *bus_data, Mat *branch_data, Mat *gen_data, Mat *gen_cost)
 {
   PetscErrorCode ierr;
 
   ierr = makeMatrix(bus_data, 5, 11, busVals);
   ierr = makeMatrix(branch_data, 6, 13, branchVals);
+  ierr = makeMatrix(gen_data, 5, 10, genVals);
+  ierr = makeMatrix(gen_cost, 5, 6, costVals);
 
   return ierr;
 }
