@@ -69,15 +69,17 @@ int main(int argc,char **argv)
 
 
 
-  Vec x, xmin, xmax, Pg, Qg;
+  Vec x, xmin, xmax, Pg, Qg, Vm, Va;
   ierr = makeVector(&x, nb*4);CHKERRQ(ierr);
   ierr = makeVector(&xmin, nb*4);CHKERRQ(ierr);
   ierr = makeVector(&xmax, nb*4);CHKERRQ(ierr);
   ierr = makeVector(&Pg, nb);CHKERRQ(ierr);
   ierr = makeVector(&Qg, nb);CHKERRQ(ierr);
+  ierr = makeVector(&Vm, nb);CHKERRQ(ierr);
+  ierr = makeVector(&Va, nb);CHKERRQ(ierr);
 
   ierr = setupConstraints(nb, bus_data, gen_data, BUS_TYPE, VA, VM, PMAX, PMIN,
-    QMAX, QMIN, &x, &xmin, &xmax, &Pg, &Qg);CHKERRQ(ierr);
+    QMAX, QMIN, &x, &xmin, &xmax, &Pg, &Qg, &Vm, &Va);CHKERRQ(ierr);
 
 
   PetscInt il[nl], nl2;
@@ -88,7 +90,7 @@ int main(int argc,char **argv)
   Vec h, g, gn, hn, Sf, St;
   Mat dh, dg, dSf_dVa, dSf_dVm, dSt_dVm, dSt_dVa;
   calcFirstDerivative(x, Ybus, bus_data, gen_data, branch_data, il, Yf, Yt,
-    baseMVA, xmax, xmin, GEN_BUS, PD, QD, F_BUS, T_BUS, RATE_A, Pg, Qg, &h, &g,
+    baseMVA, xmax, xmin, GEN_BUS, PD, QD, F_BUS, T_BUS, RATE_A, Pg, Qg, Vm, Va, &h, &g,
     &dh, &dg, &gn, &hn, &dSf_dVa, &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
 
 
@@ -110,6 +112,8 @@ int main(int argc,char **argv)
   ierr = VecDestroy(&xmax);CHKERRQ(ierr);
   ierr = VecDestroy(&Pg);CHKERRQ(ierr);
   ierr = VecDestroy(&Qg);CHKERRQ(ierr);
+  ierr = VecDestroy(&Va);CHKERRQ(ierr);
+  ierr = VecDestroy(&Va);CHKERRQ(ierr);
 
   ierr = PetscFinalize();CHKERRQ(ierr);
 

@@ -77,12 +77,16 @@ PetscErrorCode makeAdmMat(Mat bus_data, Mat branch_data, PetscScalar GS, PetscSc
   PetscScalar const *tArr;
   PetscScalar const *YffArr;
   PetscScalar const *YftArr;
+  PetscScalar const *YtfArr;
+  PetscScalar const *YttArr;
   PetscScalar one = 1.0;
   PetscInt max, min;
   ierr = VecGetArrayRead(f, &fArr);CHKERRQ(ierr);
   ierr = VecGetArrayRead(t, &tArr);CHKERRQ(ierr);
   ierr = VecGetArrayRead(Yff, &YffArr);CHKERRQ(ierr);
   ierr = VecGetArrayRead(Yft, &YftArr);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(Ytf, &YtfArr);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(Ytt, &YttArr);CHKERRQ(ierr);
   ierr = MatGetOwnershipRange(*Cf, &min, &max);CHKERRQ(ierr);
   for(PetscInt i = min; i < max; i++)
   {
@@ -90,13 +94,15 @@ PetscErrorCode makeAdmMat(Mat bus_data, Mat branch_data, PetscScalar GS, PetscSc
     ierr = MatSetValue(*Ct, i, tArr[i - min] - 1, one, INSERT_VALUES);CHKERRQ(ierr);
     ierr = MatSetValue(*Yf, i, fArr[i - min] - 1, YffArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
     ierr = MatSetValue(*Yf, i, tArr[i - min] - 1, YftArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
-    ierr = MatSetValue(*Yt, i, fArr[i - min] - 1, -1 * YffArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
-    ierr = MatSetValue(*Yt, i, tArr[i - min] - 1, -1 * YftArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatSetValue(*Yt, i, fArr[i - min] - 1, YtfArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatSetValue(*Yt, i, tArr[i - min] - 1, YttArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
   }
   ierr = VecRestoreArrayRead(f, &fArr);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(t, &tArr);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(Yff, &YffArr);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(Yft, &YftArr);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(Ytf, &YffArr);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(Ytt, &YftArr);CHKERRQ(ierr);
 
   ierr = MatAssemblyBegin(*Cf, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(*Ct, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
@@ -126,6 +132,7 @@ PetscErrorCode makeAdmMat(Mat bus_data, Mat branch_data, PetscScalar GS, PetscSc
 
   ierr = MatAXPY(*Ybus, 1, CtTYt, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
   ierr = MatAXPY(*Ybus, 1, CfTYf, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
+
   ierr = MatDestroy(&CfTYf);CHKERRQ(ierr);
   ierr = MatDestroy(&CtTYt);CHKERRQ(ierr);
 

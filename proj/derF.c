@@ -4,18 +4,16 @@
 
 //Sets
 PetscErrorCode setupConstraints(PetscInt nb, Mat bus_data, Mat gen_data, PetscScalar BUS_TYPE, PetscScalar VA,
-  PetscScalar VM, PetscScalar PMAX, PetscScalar PMIN, PetscScalar QMAX, PetscScalar QMIN, Vec *x, Vec *xmin, Vec *xmax, Vec *Pg, Vec *Qg)
+  PetscScalar VM, PetscScalar PMAX, PetscScalar PMIN, PetscScalar QMAX, PetscScalar QMIN, Vec *x, Vec *xmin, Vec *xmax, Vec *Pg, Vec *Qg, Vec *Vm, Vec *Va)
 {
   PetscErrorCode ierr;
 
   //Setting up max and min values (lines 97 - 114)
-  Vec Va_max, Va_min, Va, Vm_max, Vm_min, Vm, Pgmax, Pgmin, Qgmax, Qgmin;
+  Vec Va_max, Va_min, Vm_max, Vm_min, Pgmax, Pgmin, Qgmax, Qgmin;
   ierr = makeVector(&Va_max, nb);CHKERRQ(ierr);
   ierr = makeVector(&Va_min, nb);CHKERRQ(ierr);
-  ierr = makeVector(&Va, nb);CHKERRQ(ierr);
   ierr = makeVector(&Vm_max, nb);CHKERRQ(ierr);
   ierr = makeVector(&Vm_min, nb);CHKERRQ(ierr);
-  ierr = makeVector(&Vm, nb);CHKERRQ(ierr);
   ierr = makeVector(&Pgmax, nb);CHKERRQ(ierr);
   ierr = makeVector(&Pgmin, nb);CHKERRQ(ierr);
   ierr = makeVector(&Qgmax, nb);CHKERRQ(ierr);
@@ -28,7 +26,7 @@ PetscErrorCode setupConstraints(PetscInt nb, Mat bus_data, Mat gen_data, PetscSc
 
   //Doing Va first so I can use the values for Va_max and Va_min
   //Va = bus_data(:, VA);
-  ierr = MatGetColumnVector(bus_data, Va, VA);CHKERRQ(ierr);
+  ierr = MatGetColumnVector(bus_data, *Va, VA);CHKERRQ(ierr);
 
   //Not creating refs as a vector
   //refs = bus_data(:, BUS_TYPE)==3;
@@ -41,7 +39,7 @@ PetscErrorCode setupConstraints(PetscInt nb, Mat bus_data, Mat gen_data, PetscSc
   PetscInt max, min;
   ierr = MatGetColumnVector(bus_data, busType, BUS_TYPE);CHKERRQ(ierr);
   ierr = VecGetArrayRead(busType, &btArr);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(Va, &VaArr);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(*Va, &VaArr);CHKERRQ(ierr);
   ierr = VecGetOwnershipRange(busType, &min, &max);CHKERRQ(ierr);
   for(PetscInt i = 0; i < max - min; i++)
   {
@@ -52,7 +50,7 @@ PetscErrorCode setupConstraints(PetscInt nb, Mat bus_data, Mat gen_data, PetscSc
     }
   }
   ierr = VecRestoreArrayRead(busType, &btArr);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(Va, &VaArr);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(*Va, &VaArr);CHKERRQ(ierr);
 
   ierr = VecAssemblyBegin(Va_max);CHKERRQ(ierr);
   ierr = VecAssemblyBegin(Va_min);CHKERRQ(ierr);
@@ -67,7 +65,7 @@ PetscErrorCode setupConstraints(PetscInt nb, Mat bus_data, Mat gen_data, PetscSc
 
 
   //Vm = bus_data(:, VM);
-  ierr = MatGetColumnVector(bus_data, Vm, VM);CHKERRQ(ierr);
+  ierr = MatGetColumnVector(bus_data, *Vm, VM);CHKERRQ(ierr);
 
 
   //Pgmax = gen_data(:, PMAX)/100;
@@ -99,7 +97,7 @@ PetscErrorCode setupConstraints(PetscInt nb, Mat bus_data, Mat gen_data, PetscSc
   //x = [Va; Vm; Pg; Qg];
   //xmin = [Va_min; Vm_min; Pgmin; Qgmin];
   //xmax = [Va_max; Vm_max; Pgmax; Qgmax];
-  ierr = stack4Vectors(*x, Va, Vm, *Pg, *Qg, nb);CHKERRQ(ierr);
+  ierr = stack4Vectors(*x, *Va, *Vm, *Pg, *Qg, nb);CHKERRQ(ierr);
   ierr = stack4Vectors(*xmin, Va_min, Vm_min, Pgmin, Qgmin, nb);CHKERRQ(ierr);
   ierr = stack4Vectors(*xmax, Va_max, Vm_max, Pgmax, Qgmax, nb);CHKERRQ(ierr);
 
@@ -107,10 +105,8 @@ PetscErrorCode setupConstraints(PetscInt nb, Mat bus_data, Mat gen_data, PetscSc
   //Clean up memory
   ierr = VecDestroy(&Va_max);CHKERRQ(ierr);
   ierr = VecDestroy(&Va_min);CHKERRQ(ierr);
-  ierr = VecDestroy(&Va);CHKERRQ(ierr);
   ierr = VecDestroy(&Vm_max);CHKERRQ(ierr);
   ierr = VecDestroy(&Vm_min);CHKERRQ(ierr);
-  ierr = VecDestroy(&Vm);CHKERRQ(ierr);
   ierr = VecDestroy(&Pgmax);CHKERRQ(ierr);
   ierr = VecDestroy(&Pgmin);CHKERRQ(ierr);
   ierr = VecDestroy(&Qgmax);CHKERRQ(ierr);
@@ -187,7 +183,7 @@ PetscErrorCode getLimitedLines(Mat branch_data, PetscScalar RATE_A, PetscInt nl,
 PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   Mat branch_data, PetscInt *il, Mat Yf, Mat Yt, PetscScalar baseMVA, Vec xmax, Vec xmin,
   PetscInt GEN_BUS, PetscInt PD, PetscInt QD, PetscInt F_BUS, PetscInt T_BUS,
-  PetscInt RATE_A, Vec Pg, Vec Qg, Vec *h, Vec *g, Mat *dh, Mat *dg, Vec *gn, Vec *hn,
+  PetscInt RATE_A, Vec Pg, Vec Qg, Vec Vm, Vec Va, Vec *h, Vec *g, Mat *dh, Mat *dg, Vec *gn, Vec *hn,
   Mat * dSf_dVa, Mat *dSf_dVm, Mat *dSt_dVm, Mat *dSt_dVa, Vec *Sf, Vec *St)
 {
   PetscErrorCode ierr;
@@ -254,7 +250,32 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecWAXPY(Sbus, -1, Sload, Sbusg);CHKERRQ(ierr);
 
 
-  //
+  //V = Vm .* exp(1j * Va);
+  Vec V, VaWork;
+  ierr = makeVector(&V, nb);CHKERRQ(ierr);
+  ierr = makeVector(&VaWork, nb);CHKERRQ(ierr);
+  ierr = VecCopy(Va, VaWork);CHKERRQ(ierr);
+
+  ierr = VecScale(VaWork, PETSC_i);CHKERRQ(ierr);
+  ierr = VecExp(VaWork);CHKERRQ(ierr);
+  ierr = VecPointwiseMult(V, Vm, VaWork);CHKERRQ(ierr);
+  ierr = VecDestroy(&VaWork);CHKERRQ(ierr);
+
+
+  //mis = V .* conj(Ybus * V) - Sbus;
+  Vec mis, conjYbusV;
+  ierr = makeVector(&mis, nb);CHKERRQ(ierr);
+  ierr = makeVector(&conjYbusV, nb);CHKERRQ(ierr);
+
+  ierr = MatMult(Ybus, V, conjYbusV);CHKERRQ(ierr);
+  ierr = VecConjugate(conjYbusV);CHKERRQ(ierr);
+
+  ierr = VecPointwiseMult(mis, V, conjYbusV);CHKERRQ(ierr);
+  ierr = VecAXPY(mis, -1, Sbus);CHKERRQ(ierr);
+  ierr = VecDestroy(&conjYbusV);CHKERRQ(ierr);
+
+
+ierr = VecView(mis, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
 
   ierr = MatDestroy(&Cg);CHKERRQ(ierr);
@@ -262,6 +283,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecDestroy(&Sbusg);CHKERRQ(ierr);
   ierr = VecDestroy(&Sload);CHKERRQ(ierr);
   ierr = VecDestroy(&Sbus);CHKERRQ(ierr);
+  ierr = VecDestroy(&V);CHKERRQ(ierr);
 
   return ierr;
 }
