@@ -1,1 +1,1 @@
-# REUHPCSDSU
+# SDState HPC REU
