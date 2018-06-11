@@ -82,14 +82,17 @@ int main(int argc,char **argv)
     QMAX, QMIN, &x, &xmin, &xmax, &Pg, &Qg, &Vm, &Va);CHKERRQ(ierr);
 
 
-  PetscInt il[nl], nl2;
-  ierr = getLimitedLines(branch_data, RATE_A, nl, il, &nl2);CHKERRQ(ierr);
+  //Hard coded for right now, should be handled by getLimitedLines() eventually
+  IS il;
+  PetscInt ilArr[2] = {0, 5};
+  PetscInt nl2 = 2;
+  ierr = ISCreateGeneral(PETSC_COMM_WORLD, nl2, ilArr, PETSC_COPY_VALUES, &il);CHKERRQ(ierr);
 
 
 
   Vec h, g, gn, hn, Sf, St;
   Mat dh, dg, dSf_dVa, dSf_dVm, dSt_dVm, dSt_dVa;
-  calcFirstDerivative(x, Ybus, bus_data, gen_data, branch_data, il, Yf, Yt,
+  calcFirstDerivative(x, Ybus, bus_data, gen_data, branch_data, il, Yf, Yt, nl2, nl,
     baseMVA, xmax, xmin, GEN_BUS, PD, QD, F_BUS, T_BUS, RATE_A, Pg, Qg, Vm, Va, &h, &g,
     &dh, &dg, &gn, &hn, &dSf_dVa, &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
 
@@ -114,6 +117,9 @@ int main(int argc,char **argv)
   ierr = VecDestroy(&Qg);CHKERRQ(ierr);
   ierr = VecDestroy(&Va);CHKERRQ(ierr);
   ierr = VecDestroy(&Va);CHKERRQ(ierr);
+  ierr = VecDestroy(&Sf);CHKERRQ(ierr);
+  ierr = VecDestroy(&St);CHKERRQ(ierr);
+  ierr = ISDestroy(&il);CHKERRQ(ierr);
 
   ierr = PetscFinalize();CHKERRQ(ierr);
 

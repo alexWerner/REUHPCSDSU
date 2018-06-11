@@ -148,12 +148,12 @@ PetscErrorCode stack4Vectors(Vec x, Vec Va, Vec Vm, Vec Pg, Vec Qg, PetscInt nb)
   return ierr;
 }
 
-//Finds the lines that have limits
-PetscErrorCode getLimitedLines(Mat branch_data, PetscScalar RATE_A, PetscInt nl, PetscInt *il, PetscInt *nl2)
+//DOES NOT WORK. DO NOT CALL
+PetscErrorCode getLimitedLines(Mat branch_data, PetscScalar RATE_A, PetscInt nl, IS *il)
 {
   PetscErrorCode ierr;
 
-  *nl2 = 0;
+  IS ilTemp;
 
   Vec rateA;
   ierr = makeVector(&rateA, nl);CHKERRQ(ierr);
@@ -161,27 +161,36 @@ PetscErrorCode getLimitedLines(Mat branch_data, PetscScalar RATE_A, PetscInt nl,
 
   PetscScalar const *aArr;
   ierr = VecGetArrayRead(rateA, &aArr);CHKERRQ(ierr);
-  PetscInt min, max;
+  PetscInt min, max, n;
   ierr = VecGetOwnershipRange(rateA, &min, &max);CHKERRQ(ierr);
+  ierr = VecGetLocalSize(rateA, &n);CHKERRQ(ierr);
+  PetscInt vals[n];
   for(PetscInt i = min; i < max; i++)
   {
-    if(aArr[i] == 0)
-      il[i] = -1;
+    if(aArr[i - min] == 0)
+      vals[i - min] = -1;
     else
-    {
-      (*nl2)++;
-      il[i] = i;
-    }
+      vals[i - min] = i;
   }
   ierr = VecRestoreArrayRead(rateA, &aArr);CHKERRQ(ierr);
   ierr = VecDestroy(&rateA);CHKERRQ(ierr);
+
+  for(int i = 0; i < n; i++)
+  {
+    PetscPrintf(PETSC_COMM_WORLD, "Vals[%d]=%d\n", i, vals[i]);
+  }
+
+  ierr = ISCreateGeneral(PETSC_COMM_WORLD, n, vals, PETSC_COPY_VALUES, &ilTemp);CHKERRQ(ierr);
+  ierr = ISExpand(*il, ilTemp, il);CHKERRQ(ierr);
+
+  ierr = ISDestroy(&ilTemp);CHKERRQ(ierr);
 
   return ierr;
 }
 
 //Comparable to gh_fcn1 in matlab
 PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
-  Mat branch_data, PetscInt *il, Mat Yf, Mat Yt, PetscScalar baseMVA, Vec xmax, Vec xmin,
+  Mat branch_data, IS il, Mat Yf, Mat Yt, PetscInt nl2, PetscInt nl, PetscScalar baseMVA, Vec xmax, Vec xmin,
   PetscInt GEN_BUS, PetscInt PD, PetscInt QD, PetscInt F_BUS, PetscInt T_BUS,
   PetscInt RATE_A, Vec Pg, Vec Qg, Vec Vm, Vec Va, Vec *h, Vec *g, Mat *dh, Mat *dg, Vec *gn, Vec *hn,
   Mat * dSf_dVa, Mat *dSf_dVm, Mat *dSt_dVm, Mat *dSt_dVa, Vec *Sf, Vec *St)
@@ -275,15 +284,70 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecDestroy(&conjYbusV);CHKERRQ(ierr);
 
 
-ierr = VecView(mis, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  //gn = [ real(mis); imag(mis)];
+  ierr = makeVector(gn, nb * 2);CHKERRQ(ierr);
+  PetscScalar const *misArr;
+  ierr = VecGetArrayRead(mis, &misArr);CHKERRQ(ierr);
+  ierr = VecGetOwnershipRange(mis, &min, &max);CHKERRQ(ierr);
+  for(PetscInt i = min; i < max; i++)
+  {
+    VecSetValue(*gn, i,      PetscRealPart(misArr[i - min]), INSERT_VALUES);CHKERRQ(ierr);
+    VecSetValue(*gn, i + nb, PetscImaginaryPart(misArr[i - min]), INSERT_VALUES);CHKERRQ(ierr);
+  }
+  ierr = VecRestoreArrayRead(mis, &misArr);CHKERRQ(ierr);
+
+  ierr = VecAssemblyBegin(*gn);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(*gn);CHKERRQ(ierr);
 
 
+  //flow_max = (branch_data(il, RATE_A) / baseMVA) .^ 2;
+  Vec flow_max, branchRateA, flowMaxTemp;
+  ierr = makeVector(&branchRateA, nl);CHKERRQ(ierr);
+  ierr = MatGetColumnVector(branch_data, branchRateA, RATE_A);CHKERRQ(ierr);
+
+  ierr = VecScale(branchRateA, 1 / baseMVA);CHKERRQ(ierr);
+  ierr = VecPow(branchRateA, 2);CHKERRQ(ierr);
+
+  ierr = VecGetSubVector(branchRateA, il, &flowMaxTemp);CHKERRQ(ierr);
+  ierr = VecDuplicate(flowMaxTemp, &flow_max);CHKERRQ(ierr);
+  ierr = VecCopy(flowMaxTemp, flow_max);CHKERRQ(ierr);
+  ierr = VecRestoreSubVector(branchRateA, il, &flowMaxTemp);CHKERRQ(ierr);
+
+  ierr = VecDestroy(&branchRateA);CHKERRQ(ierr);
+  ierr = VecDestroy(&flowMaxTemp);CHKERRQ(ierr);
+
+
+  //Creating submatrix of branch_data that only contains rows designated by il
+  Mat subBranch;
+  // IS is13;
+  // ierr = ISCreateStride(PETSC_COMM_WORLD, 13, 0, 1, &is13);CHKERRQ(ierr);
+  // ierr = ISView(il, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  // ierr = ISView(is13, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  // ierr = MatCreateSubMatrix(branch_data, il, is13, MAT_INITIAL_MATRIX, &subBranch);CHKERRQ(ierr);
+  // ierr = ISDestroy(&is13);CHKERRQ(ierr);
+  //
+  // ierr = MatView(subBranch, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+
+
+  //Sf = V(branch_data(il, F_BUS)) .* conj(Yf(il, :) * V);
+  ierr = makeVector(Sf, nl2);CHKERRQ(ierr);
+
+
+
+  //St = V(branch_data(il, T_BUS)) .* conj(Yt(il, :) * V);
+  ierr = makeVector(St, nl2);CHKERRQ(ierr);
+
+
+
+  ierr = MatDestroy(&subBranch);CHKERRQ(ierr);
   ierr = MatDestroy(&Cg);CHKERRQ(ierr);
   ierr = VecDestroy(&gen_buses);CHKERRQ(ierr);
   ierr = VecDestroy(&Sbusg);CHKERRQ(ierr);
   ierr = VecDestroy(&Sload);CHKERRQ(ierr);
   ierr = VecDestroy(&Sbus);CHKERRQ(ierr);
   ierr = VecDestroy(&V);CHKERRQ(ierr);
+  ierr = VecDestroy(&flow_max);CHKERRQ(ierr);
+  //ierr = VecDestroy(&flow_max);CHKERRQ(ierr);
 
   return ierr;
 }
