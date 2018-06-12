@@ -67,6 +67,7 @@ int main(int argc,char **argv)
   ierr = ISDestroy(&is);CHKERRQ(ierr);
   ierr = ISDestroy(&isNeg);CHKERRQ(ierr);
   ierr = ISDestroy(&isOut);CHKERRQ(ierr);
+  ierr = VecDestroy(&v);CHKERRQ(ierr);
   ierr = PetscFinalize();CHKERRQ(ierr);
   return ierr;
 }

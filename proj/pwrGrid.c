@@ -82,11 +82,10 @@ int main(int argc,char **argv)
     QMAX, QMIN, &x, &xmin, &xmax, &Pg, &Qg, &Vm, &Va);CHKERRQ(ierr);
 
 
-  //Hard coded for right now, should be handled by getLimitedLines() eventually
+
   IS il;
-  PetscInt ilArr[2] = {0, 5};
-  PetscInt nl2 = 2;
-  ierr = ISCreateGeneral(PETSC_COMM_WORLD, nl2, ilArr, PETSC_COPY_VALUES, &il);CHKERRQ(ierr);
+  PetscInt nl2;
+  ierr = getLimitedLines(branch_data, RATE_A, nl, &il, &nl2);CHKERRQ(ierr);
 
 
 

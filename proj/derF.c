@@ -148,8 +148,8 @@ PetscErrorCode stack4Vectors(Vec x, Vec Va, Vec Vm, Vec Pg, Vec Qg, PetscInt nb)
   return ierr;
 }
 
-//DOES NOT WORK. DO NOT CALL
-PetscErrorCode getLimitedLines(Mat branch_data, PetscScalar RATE_A, PetscInt nl, IS *il)
+
+PetscErrorCode getLimitedLines(Mat branch_data, PetscScalar RATE_A, PetscInt nl, IS *il, PetscInt *nl2)
 {
   PetscErrorCode ierr;
 
@@ -168,20 +168,19 @@ PetscErrorCode getLimitedLines(Mat branch_data, PetscScalar RATE_A, PetscInt nl,
   for(PetscInt i = min; i < max; i++)
   {
     if(aArr[i - min] == 0)
-      vals[i - min] = -1;
+      vals[i - min] = max;
     else
       vals[i - min] = i;
   }
   ierr = VecRestoreArrayRead(rateA, &aArr);CHKERRQ(ierr);
   ierr = VecDestroy(&rateA);CHKERRQ(ierr);
 
-  for(int i = 0; i < n; i++)
-  {
-    PetscPrintf(PETSC_COMM_WORLD, "Vals[%d]=%d\n", i, vals[i]);
-  }
+  ierr = ISCreateGeneral(PETSC_COMM_WORLD, n, vals, PETSC_COPY_VALUES, il);CHKERRQ(ierr);
 
-  ierr = ISCreateGeneral(PETSC_COMM_WORLD, n, vals, PETSC_COPY_VALUES, &ilTemp);CHKERRQ(ierr);
-  ierr = ISExpand(*il, ilTemp, il);CHKERRQ(ierr);
+  ierr = ISCreateGeneral(PETSC_COMM_WORLD, 1, &max, PETSC_COPY_VALUES, &ilTemp);CHKERRQ(ierr);
+  ierr = ISDifference(*il, ilTemp, il);CHKERRQ(ierr);
+
+  ierr = ISGetSize(*il, nl2);CHKERRQ(ierr);
 
   ierr = ISDestroy(&ilTemp);CHKERRQ(ierr);
 
@@ -317,29 +316,94 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecDestroy(&flowMaxTemp);CHKERRQ(ierr);
 
 
-  //Creating submatrix of branch_data that only contains rows designated by il
-  Mat subBranch;
-  // IS is13;
-  // ierr = ISCreateStride(PETSC_COMM_WORLD, 13, 0, 1, &is13);CHKERRQ(ierr);
-  // ierr = ISView(il, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-  // ierr = ISView(is13, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-  // ierr = MatCreateSubMatrix(branch_data, il, is13, MAT_INITIAL_MATRIX, &subBranch);CHKERRQ(ierr);
-  // ierr = ISDestroy(&is13);CHKERRQ(ierr);
-  //
-  // ierr = MatView(subBranch, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-
-
   //Sf = V(branch_data(il, F_BUS)) .* conj(Yf(il, :) * V);
-  ierr = makeVector(Sf, nl2);CHKERRQ(ierr);
+  Vec ilFVals;
+  Mat YfIl;
+  ierr = getSubMatVector(&ilFVals, branch_data, il, F_BUS, nl);CHKERRQ(ierr);
+  ierr = MatCreateSubMatrix(Yf, il, NULL, MAT_INITIAL_MATRIX, &YfIl);CHKERRQ(ierr);
 
+  Vec YfV, VfRight;
+  ierr = MatCreateVecs(YfIl, &VfRight, &YfV);CHKERRQ(ierr);
+  ierr = VecCopy(V, VfRight);CHKERRQ(ierr);
+
+  ierr = MatMult(YfIl, VfRight, YfV);CHKERRQ(ierr);
+  ierr = VecDestroy(&VfRight);CHKERRQ(ierr);
+  ierr = VecConjugate(YfV);CHKERRQ(ierr);
+
+  PetscScalar const *ilFVArr;
+  ierr = VecGetArrayRead(ilFVals, &ilFVArr);CHKERRQ(ierr);
+  ierr = VecGetOwnershipRange(ilFVals, &min, &max);CHKERRQ(ierr);
+  PetscInt n;
+  ierr = VecGetLocalSize(ilFVals, &n);CHKERRQ(ierr);
+  PetscInt SfVals[n];
+  for(PetscInt i = min; i < max; i++)
+  {
+    SfVals[i - min] = ilFVArr[i - min]-1;
+  }
+  ierr = VecRestoreArrayRead(ilFVals, &ilFVArr);CHKERRQ(ierr);
+
+  IS isFV;
+  ierr = ISCreateGeneral(PETSC_COMM_WORLD, n, SfVals, PETSC_COPY_VALUES, &isFV);CHKERRQ(ierr);
+
+  Vec VfInd;
+  ierr = VecGetSubVector(V, isFV, &VfInd);CHKERRQ(ierr);
+  ierr = VecDuplicate(VfInd, Sf);CHKERRQ(ierr);
+  ierr = VecPointwiseMult(*Sf, VfInd, YfV);CHKERRQ(ierr);
+  ierr = VecRestoreSubVector(V, isFV, &VfInd);CHKERRQ(ierr);
+
+  ierr = ISDestroy(&isFV);CHKERRQ(ierr);
+  ierr = VecDestroy(&ilFVals);CHKERRQ(ierr);
+  ierr = VecDestroy(&YfV);CHKERRQ(ierr);
+  ierr = MatDestroy(&YfIl);CHKERRQ(ierr);
 
 
   //St = V(branch_data(il, T_BUS)) .* conj(Yt(il, :) * V);
-  ierr = makeVector(St, nl2);CHKERRQ(ierr);
+  Vec ilTVals;
+  Mat YtIl;
+  ierr = getSubMatVector(&ilTVals, branch_data, il, T_BUS, nl);CHKERRQ(ierr);
+  ierr = MatCreateSubMatrix(Yt, il, NULL, MAT_INITIAL_MATRIX, &YtIl);CHKERRQ(ierr);
+
+  Vec YtV, VtRight;
+  ierr = MatCreateVecs(YtIl, &VtRight, &YtV);CHKERRQ(ierr);
+  ierr = VecCopy(V, VtRight);CHKERRQ(ierr);
+
+  ierr = MatMult(YtIl, VtRight, YtV);CHKERRQ(ierr);
+  ierr = VecDestroy(&VtRight);CHKERRQ(ierr);
+  ierr = VecConjugate(YtV);CHKERRQ(ierr);
+
+  PetscScalar const *ilTVArr;
+  ierr = VecGetArrayRead(ilTVals, &ilTVArr);CHKERRQ(ierr);
+  ierr = VecGetOwnershipRange(ilTVals, &min, &max);CHKERRQ(ierr);
+  ierr = VecGetLocalSize(ilTVals, &n);CHKERRQ(ierr);
+  PetscInt StVals[n];
+  for(PetscInt i = min; i < max; i++)
+  {
+    StVals[i - min] = ilTVArr[i - min]-1;
+  }
+  ierr = VecRestoreArrayRead(ilTVals, &ilTVArr);CHKERRQ(ierr);
+
+  IS isTV;
+  ierr = ISCreateGeneral(PETSC_COMM_WORLD, n, StVals, PETSC_COPY_VALUES, &isTV);CHKERRQ(ierr);
+
+  Vec VtInd;
+  ierr = VecGetSubVector(V, isTV, &VtInd);CHKERRQ(ierr);
+  ierr = VecDuplicate(VtInd, St);CHKERRQ(ierr);
+  ierr = VecPointwiseMult(*St, VtInd, YtV);CHKERRQ(ierr);
+  ierr = VecRestoreSubVector(V, isTV, &VtInd);CHKERRQ(ierr);
+
+  ierr = ISDestroy(&isTV);CHKERRQ(ierr);
+  ierr = VecDestroy(&ilTVals);CHKERRQ(ierr);
+  ierr = VecDestroy(&YtV);CHKERRQ(ierr);
+  ierr = MatDestroy(&YtIl);CHKERRQ(ierr);
+
+
+  //hn = [Sf .* conj(Sf) - flow_max;
+  //      St .* conj(St) - flow_max ];
 
 
 
-  ierr = MatDestroy(&subBranch);CHKERRQ(ierr);
+
+
   ierr = MatDestroy(&Cg);CHKERRQ(ierr);
   ierr = VecDestroy(&gen_buses);CHKERRQ(ierr);
   ierr = VecDestroy(&Sbusg);CHKERRQ(ierr);
@@ -348,6 +412,25 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecDestroy(&V);CHKERRQ(ierr);
   ierr = VecDestroy(&flow_max);CHKERRQ(ierr);
   //ierr = VecDestroy(&flow_max);CHKERRQ(ierr);
+
+  return ierr;
+}
+
+
+PetscErrorCode getSubMatVector(Vec *subVec, Mat m, IS is, PetscInt col, PetscInt vecSize)
+{
+  PetscErrorCode ierr;
+  Vec v;
+  ierr = makeVector(&v, vecSize);CHKERRQ(ierr);
+  ierr = MatGetColumnVector(m, v, col);CHKERRQ(ierr);
+
+  Vec subV;
+  ierr = VecGetSubVector(v, is, &subV);CHKERRQ(ierr);
+
+  ierr = VecDuplicate(subV, subVec);CHKERRQ(ierr);
+  ierr = VecCopy(subV, *subVec);CHKERRQ(ierr);
+
+  ierr = VecRestoreSubVector(v, is, &subV);CHKERRQ(ierr);
 
   return ierr;
 }
