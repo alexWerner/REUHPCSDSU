@@ -399,11 +399,86 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
 
   //hn = [Sf .* conj(Sf) - flow_max;
   //      St .* conj(St) - flow_max ];
+  ierr = makeVector(hn, nl2 * 2);CHKERRQ(ierr);
+  Vec SfConj, StConj;
+  ierr = VecDuplicate(*Sf, &SfConj);CHKERRQ(ierr);
+  ierr = VecDuplicate(*St, &StConj);CHKERRQ(ierr);
+  ierr = VecCopy(*Sf, SfConj);CHKERRQ(ierr);
+  ierr = VecCopy(*St, StConj);CHKERRQ(ierr);
+  ierr = VecConjugate(SfConj);CHKERRQ(ierr);
+  ierr = VecConjugate(StConj);CHKERRQ(ierr);
+
+  ierr = VecPointwiseMult(SfConj, *Sf, SfConj);CHKERRQ(ierr);
+  ierr = VecPointwiseMult(StConj, *St, StConj);CHKERRQ(ierr);
+
+  ierr = VecAXPY(SfConj, -1, flow_max);CHKERRQ(ierr);
+  ierr = VecAXPY(StConj, -1, flow_max);CHKERRQ(ierr);
+
+  PetscScalar const *SfArr;
+  PetscScalar const *StArr;
+  ierr = VecGetArrayRead(SfConj, &SfArr);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(StConj, &StArr);CHKERRQ(ierr);
+  ierr = VecGetOwnershipRange(SfConj, &min, &max);CHKERRQ(ierr);
+  for(PetscInt i = min; i < max; i++)
+  {
+    VecSetValue(*hn, i,       SfArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
+    VecSetValue(*hn, i + nl2, StArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
+  }
+  ierr = VecRestoreArrayRead(SfConj, &SfArr);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(StConj, &StArr);CHKERRQ(ierr);
+
+  ierr = VecDestroy(&SfConj);CHKERRQ(ierr);
+  ierr = VecDestroy(&StConj);CHKERRQ(ierr);
+
+  ierr = VecAssemblyBegin(*hn);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(*hn);CHKERRQ(ierr);
+
+
+  //n = length(V);            same as nb
+  //ng = size(gen_data, 1);   hasn't changed
+  //n_var = length(x);        same as 4 * nb
+
+
+  //Ibus = Ybus * V
+  Vec Ibus;
+  ierr = MatCreateVecs(Ybus, NULL, &Ibus);CHKERRQ(ierr);
+  ierr = MatMult(Ybus, V, Ibus);CHKERRQ(ierr);
+
+
+  //diagV = sparse(1:n, 1:n, V, n, n);
+  Mat diagV;
+  ierr = makeDiagonalMat(&diagV, V, nb);CHKERRQ(ierr);
+
+
+  //diagIbus = sparse(1:n, 1:n, Ibus, n, n);
+  Mat diagIbus;
+  ierr = makeDiagonalMat(&diagIbus, Ibus, nb);CHKERRQ(ierr);
+
+
+  //diagVnorm = sparse(1:n, 1:n, V ./ abs(V), n, n);
+  Mat diagVnorm;
+  Vec Vnorm;
+  ierr = VecDuplicate(V, &Vnorm);CHKERRQ(ierr);
+  ierr = VecCopy(V, Vnorm);CHKERRQ(ierr);
+
+  ierr = VecAbs(Vnorm);CHKERRQ(ierr);
+  ierr = VecReciprocal(Vnorm);CHKERRQ(ierr);
+  ierr = VecPointwiseMult(Vnorm, V, Vnorm);
+  ierr = makeDiagonalMat(&diagVnorm, Vnorm, nb);CHKERRQ(ierr);
+
+
+  //
 
 
 
 
 
+
+
+
+  ierr = MatDestroy(&diagIbus);CHKERRQ(ierr);
+  ierr = MatDestroy(&diagV);CHKERRQ(ierr);
+  ierr = MatDestroy(&diagVnorm);CHKERRQ(ierr);
   ierr = MatDestroy(&Cg);CHKERRQ(ierr);
   ierr = VecDestroy(&gen_buses);CHKERRQ(ierr);
   ierr = VecDestroy(&Sbusg);CHKERRQ(ierr);
@@ -411,6 +486,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecDestroy(&Sbus);CHKERRQ(ierr);
   ierr = VecDestroy(&V);CHKERRQ(ierr);
   ierr = VecDestroy(&flow_max);CHKERRQ(ierr);
+  ierr = VecDestroy(&Vnorm);CHKERRQ(ierr);
+  ierr = VecDestroy(&Ibus);CHKERRQ(ierr);
   //ierr = VecDestroy(&flow_max);CHKERRQ(ierr);
 
   return ierr;
@@ -431,6 +508,28 @@ PetscErrorCode getSubMatVector(Vec *subVec, Mat m, IS is, PetscInt col, PetscInt
   ierr = VecCopy(subV, *subVec);CHKERRQ(ierr);
 
   ierr = VecRestoreSubVector(v, is, &subV);CHKERRQ(ierr);
+
+  return ierr;
+}
+
+
+PetscErrorCode makeDiagonalMat(Mat *m, Vec vals, PetscInt dim)
+{
+  PetscErrorCode ierr;
+
+  ierr = makeSparse(m, dim, dim, 1, 0);CHKERRQ(ierr);
+
+  PetscScalar const *mArr;
+  ierr = VecGetArrayRead(vals, &mArr);CHKERRQ(ierr);
+  PetscInt min, max;
+  ierr = VecGetOwnershipRange(vals, &min, &max);CHKERRQ(ierr);
+  for(PetscInt i = min; i < max; i++)
+  {
+    ierr = MatSetValue(*m, i, i, mArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
+  }
+  ierr = MatAssemblyBegin(*m, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(*m, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(vals, &mArr);CHKERRQ(ierr);
 
   return ierr;
 }
