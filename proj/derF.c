@@ -626,13 +626,54 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   //dSf_dVm = conj(diagIf) * sparse(1:nl1, f1, Vnorm(f1), nl1, nb) + diagVf * conj(Yf(il, :) * diagVnorm;
   //dSt_dVa = 1j * (conj(diagIt) * sparse(1:nl1, t1, V(t1), nl1, nb) - diagVt * conj(Yt(il, :) * diagV));
   //dSt_dVm = conj(diagIt) * sparse(1:nl1, t1, Vnorm(t1), nl1, nb) + diagVt * conj(Yt(il, :) * diagVnorm;
-  ierr = dSMat(dSf_dVa, PETSC_i, -1, nl2, nb, diagIf, diagVf, V, YfIl, isFV, diagV);
+  ierr = dSMat(dSf_dVa, PETSC_i, -1, nl2, nb, diagIf, diagVf, V,     YfIl, isFV, diagV);
   ierr = dSMat(dSf_dVm, 1,        1, nl2, nb, diagIf, diagVf, Vnorm, YfIl, isFV, diagVnorm);
-  ierr = dSMat(dSt_dVa, PETSC_i, -1, nl2, nb, diagIt, diagVt, V, YtIl, isTV, diagV);
+  ierr = dSMat(dSt_dVa, PETSC_i, -1, nl2, nb, diagIt, diagVt, V,     YtIl, isTV, diagV);
   ierr = dSMat(dSt_dVm, 1,        1, nl2, nb, diagIt, diagVt, Vnorm, YtIl, isTV, diagVnorm);
 
 
+  //Sf = V(f1) .* conj(If);
+  //St = V(t1) .* conj(It);
+  ierr = VecDestroy(Sf);CHKERRQ(ierr);
+  ierr = VecDestroy(St);CHKERRQ(ierr);
 
+  ierr = VecConjugate(If);CHKERRQ(ierr);
+  ierr = VecConjugate(It);CHKERRQ(ierr);
+
+  Vec VisF, VisT;
+  ierr = VecGetSubVector(V, isFV, &VisF);CHKERRQ(ierr);
+  ierr = VecGetSubVector(V, isTV, &VisT);CHKERRQ(ierr);
+  ierr = VecDuplicate(VisF, Sf);CHKERRQ(ierr);
+  ierr = VecDuplicate(VisT, St);CHKERRQ(ierr);
+
+  ierr = VecPointwiseMult(*Sf, VisF, If);CHKERRQ(ierr);
+  ierr = VecPointwiseMult(*St, VisT, It);CHKERRQ(ierr);
+
+  ierr = VecRestoreSubVector(V, isFV, &VisF);CHKERRQ(ierr);
+  ierr = VecRestoreSubVector(V, isTV, &VisT);CHKERRQ(ierr);
+
+
+  //nl_Sf = length(Sf)
+  //Same as nl2
+
+
+  //dAf_dPf = sparse(1:nl_Sf, 1:nl_Sf, 2 * real(Sf), nl_Sf, nl_Sf);
+  //dAf_dQf = sparse(1:nl_Sf, 1:nl_Sf, 2 * imag(Sf), nl_Sf, nl_Sf);
+  //dAt_dPt = sparse(1:nl_Sf, 1:nl_Sf, 2 * real(St), nl_Sf, nl_Sf);
+  //dAt_dQt = sparse(1:nl_Sf, 1:nl_Sf, 2 * imag(St), nl_Sf, nl_Sf);
+  Mat dAf_dPf, dAf_dQf, dAt_dPt, dAt_dQt;
+  ierr = makeDiagonalMatRI(&dAf_dPf, *Sf, nl2, 'r', 2);CHKERRQ(ierr);
+  ierr = makeDiagonalMatRI(&dAf_dQf, *Sf, nl2, 'i', 2);CHKERRQ(ierr);
+  ierr = makeDiagonalMatRI(&dAt_dPt, *St, nl2, 'r', 2);CHKERRQ(ierr);
+  ierr = makeDiagonalMatRI(&dAt_dQt, *St, nl2, 'i', 2);CHKERRQ(ierr);
+
+
+  //
+  Mat dAf_dVm, dAf_dVa, dAt_dVm, dAt_dVa;
+  ierr = matRealPMatImag(&dAf_dVm, dAf_dPf, dAf_dQf, *dSf_dVm);CHKERRQ(ierr);
+  ierr = matRealPMatImag(&dAf_dVa, dAf_dPf, dAf_dQf, *dSf_dVa);CHKERRQ(ierr);
+  ierr = matRealPMatImag(&dAt_dVm, dAt_dPt, dAt_dQt, *dSt_dVm);CHKERRQ(ierr);
+  ierr = matRealPMatImag(&dAt_dVa, dAt_dPt, dAt_dQt, *dSt_dVa);CHKERRQ(ierr);
 
 
 
@@ -658,6 +699,10 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = MatDestroy(&diagIt);CHKERRQ(ierr);
   ierr = MatDestroy(&YfIl);CHKERRQ(ierr);
   ierr = MatDestroy(&YtIl);CHKERRQ(ierr);
+  ierr = MatDestroy(&dAf_dPf);CHKERRQ(ierr);
+  ierr = MatDestroy(&dAf_dQf);CHKERRQ(ierr);
+  ierr = MatDestroy(&dAt_dPt);CHKERRQ(ierr);
+  ierr = MatDestroy(&dAt_dQt);CHKERRQ(ierr);
   ierr = VecDestroy(&gen_buses);CHKERRQ(ierr);
   ierr = VecDestroy(&Sbusg);CHKERRQ(ierr);
   ierr = VecDestroy(&Sload);CHKERRQ(ierr);
@@ -671,6 +716,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecDestroy(&YtV);CHKERRQ(ierr);
   ierr = VecDestroy(&If);CHKERRQ(ierr);
   ierr = VecDestroy(&It);CHKERRQ(ierr);
+  ierr = VecDestroy(&VisF);CHKERRQ(ierr);
+  ierr = VecDestroy(&VisT);CHKERRQ(ierr);
   ierr = ISDestroy(&isFV);CHKERRQ(ierr);
   ierr = ISDestroy(&isTV);CHKERRQ(ierr);
   //ierr = VecDestroy(&flow_max);CHKERRQ(ierr);
@@ -711,6 +758,34 @@ PetscErrorCode makeDiagonalMat(Mat *m, Vec vals, PetscInt dim)
   for(PetscInt i = min; i < max; i++)
   {
     ierr = MatSetValue(*m, i, i, mArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
+  }
+  ierr = MatAssemblyBegin(*m, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(*m, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(vals, &mArr);CHKERRQ(ierr);
+
+  return ierr;
+}
+
+PetscErrorCode makeDiagonalMatRI(Mat *m, Vec vals, PetscInt dim, char r, PetscScalar scale)
+{
+  PetscErrorCode ierr;
+
+  ierr = makeSparse(m, dim, dim, 1, 0);CHKERRQ(ierr);
+
+  PetscScalar const *mArr;
+  ierr = VecGetArrayRead(vals, &mArr);CHKERRQ(ierr);
+  PetscInt min, max;
+  ierr = VecGetOwnershipRange(vals, &min, &max);CHKERRQ(ierr);
+  for(PetscInt i = min; i < max; i++)
+  {
+    if(r == 'r')
+    {
+      ierr = MatSetValue(*m, i, i, scale * PetscRealPart(mArr[i - min]), INSERT_VALUES);CHKERRQ(ierr);
+    }
+    else
+    {
+      ierr = MatSetValue(*m, i, i, scale * PetscImaginaryPart(mArr[i - min]), INSERT_VALUES);CHKERRQ(ierr);
+    }
   }
   ierr = MatAssemblyBegin(*m, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(*m, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
@@ -781,6 +856,31 @@ PetscErrorCode dSMat(Mat *dSf_dVa, PetscScalar scale, PetscInt op, PetscInt nl2,
   ierr = MatDestroy(&conjDiagIf);CHKERRQ(ierr);
   ierr = MatDestroy(&Vf1Mat);CHKERRQ(ierr);
   ierr = MatDestroy(&dSf_dVaWork);CHKERRQ(ierr);
+
+  return ierr;
+}
+
+
+PetscErrorCode matRealPMatImag(Mat *result, Mat mat1, Mat mat2, Mat matCom)
+{
+  PetscErrorCode ierr;
+
+  Mat real, imag;
+  ierr = MatDuplicate(matCom, MAT_COPY_VALUES, &real);CHKERRQ(ierr);
+  ierr = MatDuplicate(matCom, MAT_COPY_VALUES, &imag);CHKERRQ(ierr);
+
+  ierr = MatRealPart(real);CHKERRQ(ierr);
+  ierr = MatImaginaryPart(imag);CHKERRQ(ierr);
+
+  Mat work;
+  ierr = MatMatMult(mat1, real, MAT_INITIAL_MATRIX, PETSC_DEFAULT, result);CHKERRQ(ierr);
+  ierr = MatMatMult(mat2, imag, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &work);CHKERRQ(ierr);
+
+  ierr = MatAXPY(*result, 1, work, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
+
+  ierr = MatDestroy(&real);CHKERRQ(ierr);
+  ierr = MatDestroy(&imag);CHKERRQ(ierr);
+  ierr = MatDestroy(&work);CHKERRQ(ierr);
 
   return ierr;
 }

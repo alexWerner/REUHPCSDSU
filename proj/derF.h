@@ -19,7 +19,11 @@ PetscErrorCode getSubMatVector(Vec *subVec, Mat m, IS is, PetscInt col, PetscInt
 
 PetscErrorCode makeDiagonalMat(Mat *m, Vec vals, PetscInt dim);
 
+PetscErrorCode makeDiagonalMatRI(Mat *m, Vec vals, PetscInt dim, char r, PetscScalar scale);
+
 PetscInt* intArray2(PetscInt n1, PetscInt n2);
 
 PetscErrorCode dSMat(Mat *dS, PetscScalar scale, PetscInt op, PetscInt nl2, PetscInt nb,
   Mat diagIf, Mat diagVf, Vec V, Mat YfIl, IS isFV, Mat diagV);
+
+  PetscErrorCode matRealPMatImag(Mat *result, Mat mat1, Mat mat2, Mat matCom);
