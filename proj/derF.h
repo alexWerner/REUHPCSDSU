@@ -1,5 +1,6 @@
 #include <petscmat.h>
 #include <petscis.h>
+#include "loadMat.h"
 
 PetscErrorCode setupConstraints(PetscInt nb, Mat bus_data, Mat gen_data, PetscScalar BUS_TYPE, PetscScalar VA,
   PetscScalar VM, PetscScalar PMAX, PetscScalar PMIN, PetscScalar QMAX, PetscScalar QMIN, Vec *x, Vec *xmin, Vec *xmax, Vec *Pg, Vec *Qg, Vec *Vm, Vec *Va);
@@ -17,3 +18,5 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
 PetscErrorCode getSubMatVector(Vec *subVec, Mat m, IS is, PetscInt col, PetscInt vecSize);
 
 PetscErrorCode makeDiagonalMat(Mat *m, Vec vals, PetscInt dim);
+
+PetscInt* intArray2(PetscInt n1, PetscInt n2);

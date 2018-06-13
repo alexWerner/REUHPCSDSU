@@ -471,40 +471,35 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   Mat dSbus_dVm, dSbus_dVmWork1, dSbus_dVmWork2, diagIbusConj;
   ierr = MatDuplicate(diagIbus, MAT_COPY_VALUES, &diagIbusConj);CHKERRQ(ierr);
   ierr = MatConjugate(diagIbusConj);CHKERRQ(ierr);
-  
+
   ierr = MatMatMult(diagIbusConj, diagVnorm, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &dSbus_dVmWork1);CHKERRQ(ierr);
   ierr = MatMatMult(Ybus, diagVnorm, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &dSbus_dVmWork2);CHKERRQ(ierr);
   ierr = MatConjugate(dSbus_dVmWork2);CHKERRQ(ierr);
   ierr = MatMatMult(diagV, dSbus_dVmWork2, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &dSbus_dVm);CHKERRQ(ierr);
   ierr = MatAXPY(dSbus_dVm, 1, dSbus_dVmWork1, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
-  
-  ierr = MatView(dSbus_dVm, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-  
-  
+
+
   //dSbus_dVa = 1j * diagV * conj(diagIbus - Ybus * diagV);
   Mat dSbus_dVa, dSbus_dVaWork;
   ierr = MatMatMult(Ybus, diagV, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &dSbus_dVaWork);CHKERRQ(ierr);
   ierr = MatAYPX(dSbus_dVaWork, -1, diagIbus, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
   ierr = MatConjugate(dSbus_dVaWork);CHKERRQ(ierr);
-  
+
   ierr = MatMatMult(diagV, dSbus_dVaWork, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &dSbus_dVa);CHKERRQ(ierr);
   ierr = MatScale(dSbus_dVa, PETSC_i);CHKERRQ(ierr);
-  
-  ierr = MatView(dSbus_dVa, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-  
-  
-  //neg_Cg = sparse(gen_data(:, GEN_BUS), 1:ng, -1, nb, ng);  
+
+
+  //neg_Cg = sparse(gen_data(:, GEN_BUS), 1:ng, -1, nb, ng);
   //This says the matrix is nb X ng, but it makes more sense to be ng X ng in general
   Mat neg_Cg;
-  ierr = makeSparse(&neg_Cg, ng, ng, 1, 1);CHKERRQ(ierr);
-  
+  ierr = makeSparse(&neg_Cg, ng, ng, ng, ng);CHKERRQ(ierr);//Come back to this and change it later
+
   Vec genBus;
   ierr = makeVector(&genBus, ng);CHKERRQ(ierr);
   ierr = MatGetColumnVector(gen_data, genBus, GEN_BUS);CHKERRQ(ierr);
 
   PetscScalar const *negCgArr;
-  ierr = VecGetArrayRead(genBus, &mArr);CHKERRQ(ierr);
-  PetscInt min, max;
+  ierr = VecGetArrayRead(genBus, &negCgArr);CHKERRQ(ierr);
   ierr = VecGetOwnershipRange(genBus, &min, &max);CHKERRQ(ierr);
   for(PetscInt i = min; i < max; i++)
   {
@@ -514,19 +509,68 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = MatAssemblyEnd(neg_Cg, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(genBus, &negCgArr);CHKERRQ(ierr);
 
-  ierr = MatView(neg_Cg, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-  
-  
+
   //dgn = sparse(2*nb, n_var);
   //dgn(:, [1:5 6:10 11:15 16:20]) = [
   //    real([dSbus_dVa dSbus_dVm]) neg_Cg sparse(nb, ng);  %% P mismatch w.r.t Va, Vm, Pg, Qg
   //    imag([dSbus_dVa dSbus_dVm]) sparse(nb, ng) neg_Cg;  %% Q mismatch w.r.t Va, Vm, Pg, Qg
   //];
   //dgn = dgn';
-  
-  
+  Mat dgn;
+  ierr = makeSparse(&dgn, 2 * nb, 4 * nb, 4 * nb, 4 * nb);CHKERRQ(ierr);
 
+  Mat realVa, imagVa, realVm, imagVm;
+  ierr = MatDuplicate(dSbus_dVa, MAT_COPY_VALUES, &realVa);CHKERRQ(ierr);
+  ierr = MatDuplicate(dSbus_dVa, MAT_COPY_VALUES, &imagVa);CHKERRQ(ierr);
+  ierr = MatDuplicate(dSbus_dVm, MAT_COPY_VALUES, &realVm);CHKERRQ(ierr);
+  ierr = MatDuplicate(dSbus_dVm, MAT_COPY_VALUES, &imagVm);CHKERRQ(ierr);
 
+  ierr = MatRealPart(realVa);CHKERRQ(ierr);
+  ierr = MatImaginaryPart(imagVa);CHKERRQ(ierr);
+  ierr = MatRealPart(realVm);CHKERRQ(ierr);
+  ierr = MatImaginaryPart(imagVm);CHKERRQ(ierr);
+
+  PetscScalar realVaArr[nb * nb];
+  PetscScalar imagVaArr[nb * nb];
+  PetscScalar realVmArr[nb * nb];
+  PetscScalar imagVmArr[nb * nb];
+  PetscScalar negCgArr2[nb * nb];
+  PetscInt *nbArr = intArray(nb);
+  PetscInt *nbArr2 = intArray2(nb, nb * 2);
+  PetscInt *nbArr3 = intArray2(nb * 2, nb * 3);
+  PetscInt *nbArr4 = intArray2(nb * 3, nb * 4);
+  ierr = MatGetOwnershipRange(realVa, &min, &max);CHKERRQ(ierr);
+  PetscInt *rowsArr = intArray2(min, max);
+  PetscInt *rowsArr2 = intArray2(min + nb, max + nb);
+  ierr = MatGetValues(realVa, max - min, rowsArr, nb, nbArr, realVaArr);CHKERRQ(ierr);
+  ierr = MatGetValues(imagVa, max - min, rowsArr, nb, nbArr, imagVaArr);CHKERRQ(ierr);
+  ierr = MatGetValues(realVm, max - min, rowsArr, nb, nbArr, realVmArr);CHKERRQ(ierr);
+  ierr = MatGetValues(imagVm, max - min, rowsArr, nb, nbArr, imagVmArr);CHKERRQ(ierr);
+  ierr = MatGetValues(neg_Cg, max - min, rowsArr, nb, nbArr, negCgArr2);CHKERRQ(ierr);
+  for(PetscInt i = min; i < max; i++)
+  {
+    ierr = MatSetValues(dgn, max - min, rowsArr, nb, nbArr, realVaArr, INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatSetValues(dgn, max - min, rowsArr, nb, nbArr2, realVmArr, INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatSetValues(dgn, max - min, rowsArr2, nb, nbArr, imagVaArr, INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatSetValues(dgn, max - min, rowsArr2, nb, nbArr2, imagVmArr, INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatSetValues(dgn, max - min, rowsArr, nb, nbArr3, negCgArr2, INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatSetValues(dgn, max - min, rowsArr2, nb, nbArr4, negCgArr2, INSERT_VALUES);CHKERRQ(ierr);
+  }
+  free(nbArr);
+  free(nbArr2);
+  free(nbArr3);
+  free(nbArr4);
+  free(rowsArr);
+  free(rowsArr2);
+  ierr = MatAssemblyBegin(dgn, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(dgn, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+  ierr = MatDestroy(&realVa);CHKERRQ(ierr);
+  ierr = MatDestroy(&imagVa);CHKERRQ(ierr);
+  ierr = MatDestroy(&realVm);CHKERRQ(ierr);
+  ierr = MatDestroy(&imagVm);CHKERRQ(ierr);
+
+  ierr = MatView(dgn, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
 
   ierr = MatDestroy(&diagIbus);CHKERRQ(ierr);
@@ -540,6 +584,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = MatDestroy(&diagV);CHKERRQ(ierr);
   ierr = MatDestroy(&diagVnorm);CHKERRQ(ierr);
   ierr = MatDestroy(&Cg);CHKERRQ(ierr);
+  ierr = MatDestroy(&dgn);CHKERRQ(ierr);
   ierr = VecDestroy(&gen_buses);CHKERRQ(ierr);
   ierr = VecDestroy(&Sbusg);CHKERRQ(ierr);
   ierr = VecDestroy(&Sload);CHKERRQ(ierr);
@@ -548,6 +593,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecDestroy(&flow_max);CHKERRQ(ierr);
   ierr = VecDestroy(&Vnorm);CHKERRQ(ierr);
   ierr = VecDestroy(&Ibus);CHKERRQ(ierr);
+  ierr = VecDestroy(&genBus);CHKERRQ(ierr);
   //ierr = VecDestroy(&flow_max);CHKERRQ(ierr);
 
   return ierr;
@@ -592,4 +638,15 @@ PetscErrorCode makeDiagonalMat(Mat *m, Vec vals, PetscInt dim)
   ierr = VecRestoreArrayRead(vals, &mArr);CHKERRQ(ierr);
 
   return ierr;
+}
+
+//Return an array {n1, n1+1, N1+2, ..., n2-1}
+PetscInt* intArray2(PetscInt n1, PetscInt n2)
+{
+  PetscInt *arr = malloc((n2-n1)*sizeof(*arr));
+  for(PetscInt i = 0; i < n2 - n1; i++)
+  {
+    arr[i] = i + n1;
+  }
+  return arr;
 }
