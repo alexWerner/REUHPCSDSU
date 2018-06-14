@@ -26,4 +26,11 @@ PetscInt* intArray2(PetscInt n1, PetscInt n2);
 PetscErrorCode dSMat(Mat *dS, PetscScalar scale, PetscInt op, PetscInt nl2, PetscInt nb,
   Mat diagIf, Mat diagVf, Vec V, Mat YfIl, IS isFV, Mat diagV);
 
-  PetscErrorCode matRealPMatImag(Mat *result, Mat mat1, Mat mat2, Mat matCom);
+PetscErrorCode matRealPMatImag(Mat *result, Mat mat1, Mat mat2, Mat matCom);
+
+PetscErrorCode find(IS *is, PetscBool (*cond)(const PetscScalar ** , PetscScalar *, PetscInt), Vec *vecs, PetscScalar *compVals, PetscInt nVecs);
+
+PetscBool lessEqual(const PetscScalar **vecVals, PetscScalar *compVals, PetscInt i);
+PetscBool greaterEqualgreater(const PetscScalar **vecVals, PetscScalar *compVals, PetscInt i);
+PetscBool lessEqualless(const PetscScalar **vecVals, PetscScalar *compVals, PetscInt i);
+PetscBool greaterLessGreater(const PetscScalar **vecVals, PetscScalar *compVals, PetscInt i);
