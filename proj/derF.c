@@ -1256,6 +1256,11 @@ PetscErrorCode find(IS *is, PetscBool (*cond)(const PetscScalar ** , PetscScalar
   return ierr;
 }
 
+PetscBool less(const PetscScalar **vecVals, PetscScalar *compVals, PetscInt i)
+{
+  return PetscRealPart(vecVals[0][i]) < PetscRealPart(compVals[0]);
+}
+
 PetscBool lessEqual(const PetscScalar **vecVals, PetscScalar *compVals, PetscInt i)
 {
   return PetscRealPart(vecVals[0][i]) <= PetscRealPart(compVals[0]);

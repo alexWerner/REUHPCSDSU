@@ -38,6 +38,7 @@ PetscErrorCode matRealPMatImag(Mat *result, Mat mat1, Mat mat2, Mat matCom);
 
 PetscErrorCode find(IS *is, PetscBool (*cond)(const PetscScalar ** , PetscScalar *, PetscInt), Vec *vecs, PetscScalar *compVals, PetscInt nVecs);
 
+PetscBool less(const PetscScalar **vecVals, PetscScalar *compVals, PetscInt i);
 PetscBool lessEqual(const PetscScalar **vecVals, PetscScalar *compVals, PetscInt i);
 PetscBool greaterEqualgreater(const PetscScalar **vecVals, PetscScalar *compVals, PetscInt i);
 PetscBool lessEqualless(const PetscScalar **vecVals, PetscScalar *compVals, PetscInt i);
