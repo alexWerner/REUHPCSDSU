@@ -65,6 +65,8 @@ int main(int argc,char **argv)
   ierr = makeAdmMat(bus_data, branch_data, GS, BS, F_BUS, T_BUS, BR_R,
     BR_X, BR_B, baseMVA, nb, nl, &Cf, &Ct, &Yf, &Yt, &Ybus);CHKERRQ(ierr);
 
+
+  ierr = PetscPrintf(PETSC_COMM_WORLD, "\nYbus\n====================\n");CHKERRQ(ierr);
   ierr = MatView(Ybus, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
 
@@ -95,8 +97,17 @@ int main(int argc,char **argv)
     baseMVA, xmax, xmin, GEN_BUS, PD, QD, F_BUS, T_BUS, RATE_A, Pg, Qg, Vm, Va, &h, &g,
     &dh, &dg, &gn, &hn, &dSf_dVa, &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
 
+  ierr = PetscPrintf(PETSC_COMM_WORLD, "\nh\n====================\n");CHKERRQ(ierr);
+  ierr = VecView(h, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
+  ierr = PetscPrintf(PETSC_COMM_WORLD, "\ng\n====================\n");CHKERRQ(ierr);
+  ierr = VecView(g, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
+  ierr = PetscPrintf(PETSC_COMM_WORLD, "\ndh\n====================\n");CHKERRQ(ierr);
+  ierr = MatView(dh, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+
+  ierr = PetscPrintf(PETSC_COMM_WORLD, "\ndg\n====================\n");CHKERRQ(ierr);
+  ierr = MatView(dg, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
 
 

@@ -839,6 +839,11 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   Vec biVecs[4] = {maxIlt, minIgt, maxIbx, minIbx};
   ierr = stackNVectors(&bi, biVecs, 4, iltN + igtN + 2 * ibxN);CHKERRQ(ierr);
 
+  ierr = VecDestroy(&maxIlt);CHKERRQ(ierr);
+  ierr = VecDestroy(&maxIbx);CHKERRQ(ierr);
+  ierr = VecDestroy(&minIgt);CHKERRQ(ierr);
+  ierr = VecDestroy(&minIbx);CHKERRQ(ierr);
+
 
   //h = [hn; Ai * x - bi];          %% inequality constraints
   Vec Aix;
@@ -850,6 +855,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   PetscInt hnN;
   ierr = VecGetSize(*hn, &hnN);CHKERRQ(ierr);
   ierr = stackNVectors(h, hVecs, 2, hnN + iltN + igtN + 2 * ibxN);CHKERRQ(ierr);
+
+  ierr = VecDestroy(&Aix);CHKERRQ(ierr);
 
 
   //g = [gn; Ae * x - be];          %% equality constraints
@@ -863,17 +870,30 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecGetSize(*gn, &gnN);CHKERRQ(ierr);
   ierr = stackNVectors(g, gVecs, 2, gnN + ieqN);CHKERRQ(ierr);
 
+  ierr = VecDestroy(&Aex);CHKERRQ(ierr);
+
 
   //dh = [dhn' Ai'];                 %% 1st derivative of inequalities
+  //took transpose of dhn above
+  Mat AiT;
+  ierr = MatTranspose(Ai, MAT_INITIAL_MATRIX, &AiT);CHKERRQ(ierr);
+  ierr = matJoinMatWidth(dh, dhn, AiT);CHKERRQ(ierr);
+  ierr = MatDestroy(&AiT);CHKERRQ(ierr);
+
+  ierr = remZeros(dh);CHKERRQ(ierr);
 
 
   //dg = [dgn Ae'];                 %% 1st derivative of equalities
+  //ierr = MatTranspose(Ae, MAT_INPLACE_MATRIX, &Ae);CHKERRQ(ierr);
+  Mat AeT;
+  ierr = MatTranspose(Ae, MAT_INITIAL_MATRIX, &AeT);CHKERRQ(ierr);
+  ierr = matJoinMatWidth(dg, dgn, AeT);CHKERRQ(ierr);
+  ierr = MatDestroy(&AeT);CHKERRQ(ierr);
+
+  ierr = remZeros(dg);CHKERRQ(ierr);
 
 
-
-
-
-
+  //Cleanup
   ierr = MatDestroy(&diagIbus);CHKERRQ(ierr);
   ierr = MatDestroy(&dSbus_dVm);CHKERRQ(ierr);
   ierr = MatDestroy(&dSbus_dVmWork1);CHKERRQ(ierr);
@@ -897,6 +917,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = MatDestroy(&dAt_dPt);CHKERRQ(ierr);
   ierr = MatDestroy(&dAt_dQt);CHKERRQ(ierr);
   ierr = MatDestroy(&Ae);CHKERRQ(ierr);
+  ierr = MatDestroy(&Ai);CHKERRQ(ierr);
+  ierr = VecDestroy(&bi);CHKERRQ(ierr);
   ierr = VecDestroy(&be);CHKERRQ(ierr);
   ierr = VecDestroy(&gen_buses);CHKERRQ(ierr);
   ierr = VecDestroy(&Sbusg);CHKERRQ(ierr);
@@ -920,7 +942,81 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = ISDestroy(&igt);CHKERRQ(ierr);
   ierr = ISDestroy(&ilt);CHKERRQ(ierr);
   ierr = ISDestroy(&ibx);CHKERRQ(ierr);
-  //ierr = VecDestroy(&flow_max);CHKERRQ(ierr);
+
+  return ierr;
+}
+
+
+PetscErrorCode remZeros(Mat *m)
+{
+  PetscErrorCode ierr;
+
+  Mat mTemp;
+
+  PetscInt r, c, max, min;
+  ierr = MatGetSize(*m, &r, &c);CHKERRQ(ierr);
+
+  ierr = makeSparse(&mTemp, r, c, c, c);
+
+  PetscScalar vals[r * c];
+  ierr = MatGetOwnershipRange(mTemp, &min, &max);CHKERRQ(ierr);
+  PetscInt *rowArr = intArray2(min, max);
+  PetscInt *colArr = intArray2(0, c);
+
+  ierr = MatGetValues(*m, max - min, rowArr, c, colArr, vals);CHKERRQ(ierr);
+
+  for(PetscInt i = min; i < max; i++)
+  {
+    for(PetscInt j = 0; j < c; j++)
+    {
+      if(vals[(i - min) * c + j] != 0)
+        ierr = MatSetValue(mTemp, i, j, vals[(i - min) * c + j], INSERT_VALUES);CHKERRQ(ierr);
+    }
+  }
+
+  ierr = MatAssemblyBegin(mTemp, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(mTemp, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+  ierr = MatDestroy(m);CHKERRQ(ierr);
+  ierr = MatDuplicate(mTemp, MAT_COPY_VALUES, m);CHKERRQ(ierr);
+  ierr = MatDestroy(&mTemp);CHKERRQ(ierr);
+
+  return ierr;
+}
+
+
+PetscErrorCode matJoinMatWidth(Mat *out, Mat left, Mat right)
+{
+  PetscErrorCode ierr;
+
+  PetscInt rows, lCol, rCol, min, max;
+  ierr = MatGetSize(left, &rows, &lCol);CHKERRQ(ierr);
+  ierr = MatGetSize(right, NULL, &rCol);CHKERRQ(ierr);
+
+  ierr = makeSparse(out, rows, lCol + rCol, lCol + rCol, lCol + rCol);CHKERRQ(ierr);
+
+  PetscScalar leftVals[rows * lCol];
+  PetscScalar rightVals[rows * rCol];
+
+  ierr = MatGetOwnershipRange(left, &min, &max);CHKERRQ(ierr);
+  PetscInt *rowArr = intArray2(min, max);
+  PetscInt *colArr = intArray2(0, lCol);
+  PetscInt *colArrR = intArray2(0, rCol);
+  PetscInt *colArr2 = intArray2(lCol, lCol + rCol);
+
+  ierr = MatGetValues(left, max - min, rowArr, lCol, colArr, leftVals);CHKERRQ(ierr);
+  ierr = MatGetValues(right, max - min, rowArr, rCol, colArrR, rightVals);CHKERRQ(ierr);
+
+  ierr = MatSetValues(*out, max - min, rowArr, lCol, colArr, leftVals, INSERT_VALUES);CHKERRQ(ierr);
+  ierr = MatSetValues(*out, max - min, rowArr, rCol, colArr2, rightVals, INSERT_VALUES);CHKERRQ(ierr);
+
+  ierr = MatAssemblyBegin(*out, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(*out, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+  free(rowArr);
+  free(colArr);
+  free(colArrR);
+  free(colArr2);
 
   return ierr;
 }

@@ -1,5 +1,5 @@
 #
-CFLAGS		 =
+CFLAGS		 = -std=c11
 FFLAGS		 =
 CPPFLAGS         =
 FPPFLAGS         =

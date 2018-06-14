@@ -15,6 +15,10 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   PetscInt RATE_A, Vec Pg, Vec Qg, Vec Vm, Vec Va, Vec *h, Vec *g, Mat *dh, Mat *dg, Vec *gn, Vec *hn,
   Mat * dSf_dVa, Mat *dSf_dVm, Mat *dSt_dVm, Mat *dSt_dVa, Vec *Sf, Vec *St);
 
+PetscErrorCode remZeros(Mat *m);
+
+PetscErrorCode matJoinMatWidth(Mat *out, Mat left, Mat right);
+
 PetscErrorCode getSubMatVector(Vec *subVec, Mat m, IS is, PetscInt col, PetscInt vecSize);
 
 PetscErrorCode getSubVector(Vec v, IS is, Vec *subV);
