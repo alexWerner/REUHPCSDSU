@@ -768,6 +768,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
 
 
   //Ai  = [ AA(ilt, :); -AA(igt, :); AA(ibx, :); -AA(ibx, :) ];
+  //something goes wrong in here when running on 1 processor, change the nb*4
+  //to nb and the issue goes away, but then Ai isn't correct
   Mat Ai, AAilt, AAigt, AAibx, AAibxN;
   ierr = MatCreateSubMatrix(AA, ilt, NULL, MAT_INITIAL_MATRIX, &AAilt);CHKERRQ(ierr);
   ierr = MatCreateSubMatrix(AA, igt, NULL, MAT_INITIAL_MATRIX, &AAigt);CHKERRQ(ierr);
@@ -777,10 +779,11 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = MatDuplicate(AAibx, MAT_COPY_VALUES, &AAibxN);CHKERRQ(ierr);
   ierr = MatScale(AAibxN, -1);CHKERRQ(ierr);
 
-  PetscInt iltN, igtN, ibxN;
+  PetscInt iltN, igtN, ibxN, ieqN;
   ierr = ISGetSize(ilt, &iltN);CHKERRQ(ierr);
   ierr = ISGetSize(igt, &igtN);CHKERRQ(ierr);
   ierr = ISGetSize(ibx, &ibxN);CHKERRQ(ierr);
+  ierr = ISGetSize(ieq, &ieqN);CHKERRQ(ierr);
 
   ierr = makeSparse(&Ai, iltN + igtN + 2 * ibxN, 4 * nb, 4 * nb, 4 * nb);CHKERRQ(ierr);
 
@@ -793,32 +796,28 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   rowsArr = intArray2(min, max);
   rowsArr2 = intArray2(min, max);
   ierr = MatGetValues(AAilt, max - min, rowsArr, nb * 4, nbArr, iltArr);CHKERRQ(ierr);
-  for(PetscInt i = min; i < max; i++)
-    ierr = MatSetValues(Ai, max - min, rowsArr2, nb * 4, nbArr, iltArr, INSERT_VALUES);CHKERRQ(ierr);
+  ierr = MatSetValues(Ai, max - min, rowsArr2, nb * 4, nbArr, iltArr, INSERT_VALUES);CHKERRQ(ierr);
   free(rowsArr2);
 
   ierr = MatGetOwnershipRange(AAigt, &min, &max);CHKERRQ(ierr);
   rowsArr = intArray2(min, max);
   rowsArr2 = intArray2(min + iltN, max + iltN);
   ierr = MatGetValues(AAigt, max - min, rowsArr, nb * 4, nbArr, igtArr);CHKERRQ(ierr);
-  for(PetscInt i = min; i < max; i++)
-    ierr = MatSetValues(Ai, max - min, rowsArr2, nb * 4, nbArr, igtArr, INSERT_VALUES);CHKERRQ(ierr);
+  ierr = MatSetValues(Ai, max - min, rowsArr2, nb * 4, nbArr, igtArr, INSERT_VALUES);CHKERRQ(ierr);
   free(rowsArr2);
 
   ierr = MatGetOwnershipRange(AAibx, &min, &max);CHKERRQ(ierr);
   rowsArr = intArray2(min, max);
   rowsArr2 = intArray2(min + iltN + igtN, max + iltN + igtN);
   ierr = MatGetValues(AAibx, max - min, rowsArr, nb * 4, nbArr, ibxArr);CHKERRQ(ierr);
-  for(PetscInt i = min; i < max; i++)
-    ierr = MatSetValues(Ai, max - min, rowsArr2, nb * 4, nbArr, ibxArr, INSERT_VALUES);CHKERRQ(ierr);
+  ierr = MatSetValues(Ai, max - min, rowsArr2, nb * 4, nbArr, ibxArr, INSERT_VALUES);CHKERRQ(ierr);
   free(rowsArr2);
 
   ierr = MatGetOwnershipRange(AAibxN, &min, &max);CHKERRQ(ierr);
   rowsArr = intArray2(min, max);
   rowsArr2 = intArray2(min + iltN + igtN + ibxN, max + iltN + igtN + ibxN);
   ierr = MatGetValues(AAibxN, max - min, rowsArr, nb * 4, nbArr, ibxNArr);CHKERRQ(ierr);
-  for(PetscInt i = min; i < max; i++)
-    ierr = MatSetValues(Ai, max - min, rowsArr2, nb * 4, nbArr, ibxNArr, INSERT_VALUES);CHKERRQ(ierr);
+  ierr = MatSetValues(Ai, max - min, rowsArr2, nb * 4, nbArr, ibxNArr, INSERT_VALUES);CHKERRQ(ierr);
   free(rowsArr);
   free(rowsArr2);
   free(nbArr);
@@ -828,12 +827,41 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
 
 
   //bi  = [ xmax(ilt, 1); -xmin(igt, 1); xmax(ibx, 1); -xmin(ibx, 1) ];
+  Vec bi, maxIlt, maxIbx, minIgt, minIbx;
+  ierr = getSubVector(xmax, ilt, &maxIlt);CHKERRQ(ierr);
+  ierr = getSubVector(xmax, ibx, &maxIbx);CHKERRQ(ierr);
+  ierr = getSubVector(xmin, igt, &minIgt);CHKERRQ(ierr);
+  ierr = getSubVector(xmin, ibx, &minIbx);CHKERRQ(ierr);
+
+  ierr = VecScale(minIgt, -1);CHKERRQ(ierr);
+  ierr = VecScale(minIbx, -1);CHKERRQ(ierr);
+
+  Vec biVecs[4] = {maxIlt, minIgt, maxIbx, minIbx};
+  ierr = stackNVectors(&bi, biVecs, 4, iltN + igtN + 2 * ibxN);CHKERRQ(ierr);
 
 
   //h = [hn; Ai * x - bi];          %% inequality constraints
+  Vec Aix;
+  ierr = MatCreateVecs(Ai, NULL, &Aix);CHKERRQ(ierr);
+  ierr = MatMult(Ai, x, Aix);CHKERRQ(ierr);
+  ierr = VecAXPY(Aix, -1, bi);CHKERRQ(ierr);
+
+  Vec hVecs[2] = {*hn, Aix};
+  PetscInt hnN;
+  ierr = VecGetSize(*hn, &hnN);CHKERRQ(ierr);
+  ierr = stackNVectors(h, hVecs, 2, hnN + iltN + igtN + 2 * ibxN);CHKERRQ(ierr);
 
 
   //g = [gn; Ae * x - be];          %% equality constraints
+  Vec Aex;
+  ierr = MatCreateVecs(Ae, NULL, &Aex);CHKERRQ(ierr);
+  ierr = MatMult(Ae, x, Aex);CHKERRQ(ierr);
+  ierr = VecAXPY(Aex, -1, be);CHKERRQ(ierr);
+
+  Vec gVecs[2] = {*gn, Aex};
+  PetscInt gnN;
+  ierr = VecGetSize(*gn, &gnN);CHKERRQ(ierr);
+  ierr = stackNVectors(g, gVecs, 2, gnN + ieqN);CHKERRQ(ierr);
 
 
   //dh = [dhn' Ai'];                 %% 1st derivative of inequalities
@@ -912,6 +940,50 @@ PetscErrorCode getSubMatVector(Vec *subVec, Mat m, IS is, PetscInt col, PetscInt
   ierr = VecCopy(subV, *subVec);CHKERRQ(ierr);
 
   ierr = VecRestoreSubVector(v, is, &subV);CHKERRQ(ierr);
+
+  return ierr;
+}
+
+
+PetscErrorCode getSubVector(Vec v, IS is, Vec *subV)
+{
+  PetscErrorCode ierr;
+
+  Vec temp;
+  ierr = VecGetSubVector(v, is, &temp);CHKERRQ(ierr);
+  ierr = VecDuplicate(temp, subV);CHKERRQ(ierr);
+  ierr = VecCopy(temp, *subV);CHKERRQ(ierr);
+  ierr = VecRestoreSubVector(v, is, &temp);CHKERRQ(ierr);
+
+  return ierr;
+}
+
+
+PetscErrorCode stackNVectors(Vec *out, Vec *vecs, PetscInt nVecs, PetscInt nTotal)
+{
+  PetscErrorCode ierr;
+
+  ierr = makeVector(out, nTotal);CHKERRQ(ierr);
+
+  PetscInt idx = 0;
+  for(PetscInt i = 0; i < nVecs; i++)
+  {
+    PetscInt size, min, max;
+    ierr = VecGetSize(vecs[i], &size);CHKERRQ(ierr);
+
+    PetscScalar const *vals;
+    ierr = VecGetOwnershipRange(vecs[i], &min, &max);CHKERRQ(ierr);
+    PetscInt *idxArr = intArray2(min + idx, max + idx);
+
+    ierr = VecGetArrayRead(vecs[i], &vals);CHKERRQ(ierr);
+    ierr = VecSetValues(*out, max-min, idxArr, vals, INSERT_VALUES);CHKERRQ(ierr);
+    ierr = VecRestoreArrayRead(vecs[i], &vals);CHKERRQ(ierr);
+
+    idx += size;
+  }
+
+  ierr = VecAssemblyBegin(*out);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(*out);CHKERRQ(ierr);
 
   return ierr;
 }

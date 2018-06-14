@@ -17,6 +17,10 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
 
 PetscErrorCode getSubMatVector(Vec *subVec, Mat m, IS is, PetscInt col, PetscInt vecSize);
 
+PetscErrorCode getSubVector(Vec v, IS is, Vec *subV);
+
+PetscErrorCode stackNVectors(Vec *out, Vec *vecs, PetscInt nVecs, PetscInt nTotal);
+
 PetscErrorCode makeDiagonalMat(Mat *m, Vec vals, PetscInt dim);
 
 PetscErrorCode makeDiagonalMatRI(Mat *m, Vec vals, PetscInt dim, char r, PetscScalar scale);
