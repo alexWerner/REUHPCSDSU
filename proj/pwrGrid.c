@@ -74,27 +74,33 @@ int main(int argc,char **argv)
   ierr = MatView(Ybus, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
 
+  PetscInt ng;
+  ierr = MatGetSize(gen_data, &ng, NULL);CHKERRQ(ierr);
+
   Vec x, xmin, xmax, Pg, Qg, Vm, Va;
   ierr = makeVector(&x, nb*4);CHKERRQ(ierr);
   ierr = makeVector(&xmin, nb*4);CHKERRQ(ierr);
   ierr = makeVector(&xmax, nb*4);CHKERRQ(ierr);
-  ierr = makeVector(&Pg, nb);CHKERRQ(ierr);
-  ierr = makeVector(&Qg, nb);CHKERRQ(ierr);
+  ierr = makeVector(&Pg, ng);CHKERRQ(ierr);
+  ierr = makeVector(&Qg, ng);CHKERRQ(ierr);
   ierr = makeVector(&Vm, nb);CHKERRQ(ierr);
   ierr = makeVector(&Va, nb);CHKERRQ(ierr);
 
 
+  ierr = PetscPrintf(PETSC_COMM_WORLD, "\nCalculating Constraints\n====================\n");CHKERRQ(ierr);
   ierr = setupConstraints(nb, bus_data, gen_data, BUS_TYPE, VA, VM, PMAX, PMIN,
     QMAX, QMIN, &x, &xmin, &xmax, &Pg, &Qg, &Vm, &Va);CHKERRQ(ierr);
 
 
   IS il;
   PetscInt nl2;
+  ierr = PetscPrintf(PETSC_COMM_WORLD, "\nLimited Lines\n====================\n");CHKERRQ(ierr);
   ierr = getLimitedLines(branch_data, RATE_A, nl, &il, &nl2);CHKERRQ(ierr);
 
 
   Vec h, g, gn, hn, Sf, St;
   Mat dh, dg, dSf_dVa, dSf_dVm, dSt_dVm, dSt_dVa;
+  ierr = PetscPrintf(PETSC_COMM_WORLD, "\nFirst Derivative\n====================\n");CHKERRQ(ierr);
   calcFirstDerivative(x, Ybus, bus_data, gen_data, branch_data, il, Yf, Yt, nl2, nl,
     baseMVA, xmax, xmin, GEN_BUS, PD, QD, F_BUS, T_BUS, RATE_A, Pg, Qg, Vm, Va, &h, &g,
     &dh, &dg, &gn, &hn, &dSf_dVa, &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
@@ -214,8 +220,8 @@ int main(int argc,char **argv)
   ierr = VecDestroy(&z);CHKERRQ(ierr);
   ierr = VecDestroy(&mu);CHKERRQ(ierr);
   ierr = VecDestroy(&e);CHKERRQ(ierr);
-  ierr = VecDestroy(&f2);CHKERRQ(ierr);
-  ierr = VecDestroy(&t2);CHKERRQ(ierr);
+  //ierr = VecDestroy(&f2);CHKERRQ(ierr);
+  //ierr = VecDestroy(&t2);CHKERRQ(ierr);
   ierr = ISDestroy(&il);CHKERRQ(ierr);
   ierr = ISDestroy(&k);CHKERRQ(ierr);
 

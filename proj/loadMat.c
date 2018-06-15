@@ -45,14 +45,14 @@ PetscErrorCode loadMatrices(Mat *bus_data, Mat *branch_data, Mat *gen_data, Mat 
   }
   else
   {
-    PetscScalar dims[8];
+    PetscInt dims[8];
 
-    ierr = readFile("mats/dims", 8, dims);
+    ierr = readFileInt("mats/dims13659", 8, dims);
 
-    ierr = matFromFile(bus_data, "mats/bus_data", dims[0], dims[1]);
-    ierr = matFromFile(branch_data, "mats/branch_data", dims[2], dims[3]);
-    ierr = matFromFile(gen_data, "mats/gen_data", dims[4], dims[5]);
-    ierr = matFromFile(gen_cost, "mats/gen_cost", dims[6], dims[7]);
+    ierr = matFromFile(bus_data, "mats/bus_data13659", dims[0], dims[1]);
+    ierr = matFromFile(branch_data, "mats/branch_data13659", dims[2], dims[3]);
+    ierr = matFromFile(gen_data, "mats/gen_data13659", dims[4], dims[5]);
+    ierr = matFromFile(gen_cost, "mats/gen_cost13659", dims[6], dims[7]);
   }
 
   return ierr;
@@ -89,7 +89,7 @@ PetscErrorCode makeMatrix(Mat *m, PetscInt rows, PetscInt cols, PetscScalar *val
 }
 
 
-PetscErrorCode readFile(const char * name, PetscInt n, PetscScalar * vals)
+PetscErrorCode readFileInt(const char * name, PetscInt n, PetscInt * vals)
 {
   PetscErrorCode ierr;
 
@@ -98,7 +98,29 @@ PetscErrorCode readFile(const char * name, PetscInt n, PetscScalar * vals)
 
   fp = fopen(name, "r");
   ierr = PetscViewerASCIIOpenWithFILE(PETSC_COMM_WORLD, fp, &v);CHKERRQ(ierr);
-  ierr = PetscViewerASCIIRead(v, vals, n, NULL, PETSC_FLOAT);CHKERRQ(ierr);
+  ierr = PetscViewerASCIIRead(v, vals, n, NULL, PETSC_INT);CHKERRQ(ierr);
+  ierr = PetscViewerDestroy(&v);CHKERRQ(ierr);
+  fclose(fp);
+
+  for(int i = 0; i < n; i++)
+  {
+    PetscPrintf(PETSC_COMM_WORLD, "[%s][%d]\t%d\n", name, i, vals[i]);
+  }
+
+  return ierr;
+}
+
+
+PetscErrorCode readFileComplex(const char * name, PetscInt n, PetscLogDouble * vals)
+{
+  PetscErrorCode ierr;
+
+  FILE *fp;
+  PetscViewer v;
+
+  fp = fopen(name, "r");
+  ierr = PetscViewerASCIIOpenWithFILE(PETSC_COMM_WORLD, fp, &v);CHKERRQ(ierr);
+  ierr = PetscViewerASCIIRead(v, vals, n, NULL, PETSC_DOUBLE);CHKERRQ(ierr);
   ierr = PetscViewerDestroy(&v);CHKERRQ(ierr);
   fclose(fp);
 
@@ -110,11 +132,26 @@ PetscErrorCode matFromFile(Mat *m, const char * name, PetscInt rows, PetscInt co
 {
   PetscErrorCode ierr;
 
-  PetscScalar vals[rows * cols];
+  PetscLogDouble *vals = malloc(rows * cols * sizeof(*vals));
 
-  ierr = readFile(name, rows * cols, vals);CHKERRQ(ierr);
+  ierr = readFileComplex(name, rows * cols, vals);CHKERRQ(ierr);
 
-  ierr = makeMatrix(m, rows, cols, vals);CHKERRQ(ierr);
+  PetscComplex *v2 = malloc(rows * cols * sizeof(*v2));
+  doubleComplex(vals, v2, rows * cols);
+  free(vals);
+
+  ierr = makeMatrix(m, rows, cols, v2);CHKERRQ(ierr);
+  free(v2);
+  //PetscPrintf(PETSC_COMM_WORLD, "\n%s\n===============\n", name);
+  //ierr = MatView(*m, PETSC_VIEWER_STDOUT_WORLD);
 
   return ierr;
+}
+
+void doubleComplex(PetscLogDouble * f, PetscComplex * t, PetscInt n)
+{
+  for(int i = 0; i < n; i++)
+  {
+    t[i] = f[i];
+  }
 }
