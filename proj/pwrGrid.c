@@ -13,7 +13,10 @@ int main(int argc,char **argv)
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);CHKERRQ(ierr);
 
-  ierr = loadMatrices(&bus_data, &branch_data, &gen_data, &gen_cost);CHKERRQ(ierr);
+  PetscBool read = PETSC_FALSE;
+  ierr = PetscOptionsGetBool(NULL, NULL, "-readMats", NULL, &read);CHKERRQ(ierr);
+
+  ierr = loadMatrices(&bus_data, &branch_data, &gen_data, &gen_cost, read);CHKERRQ(ierr);
 
   //bus column indices
               //PQ = 1,   //Bus Types
@@ -169,12 +172,12 @@ int main(int argc,char **argv)
 
   //f2 = branch_data(il, F_BUS);
   Vec f2;
-  ierr = getSubMatVector(&f2, branch_data, il, F_BUS, nl2);
-
-
-  //t2 = branch_data(il, T_BUS);
+  // ierr = getSubMatVector(&f2, branch_data, il, F_BUS, nl2);
+  //
+  //
+  // //t2 = branch_data(il, T_BUS);
   Vec t2;
-  ierr = getSubMatVector(&t2, branch_data, il, T_BUS, nl2);
+  // ierr = getSubMatVector(&t2, branch_data, il, T_BUS, nl2);
 
 
   //Cf = sparse(1:nl2, f2, ones(nl2, 1), nl2, nb);
