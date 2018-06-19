@@ -3,6 +3,7 @@ static char help[] = "Power grid simulation";
 #include "admMat.h"
 #include "loadMat.h"
 #include "derF.h"
+#include "calcCost.h"
 
 int main(int argc,char **argv)
 {
@@ -13,8 +14,8 @@ int main(int argc,char **argv)
 
   ierr = PetscInitialize(&argc,&argv,(char*)0,help);CHKERRQ(ierr);
 
-  PetscBool read = PETSC_FALSE;
-  ierr = PetscOptionsGetBool(NULL, NULL, "-readMats", NULL, &read);CHKERRQ(ierr);
+  PetscInt read = -1;
+  ierr = PetscOptionsGetInt(NULL, NULL, "-readMats", &read, NULL);CHKERRQ(ierr);
 
   ierr = loadMatrices(&bus_data, &branch_data, &gen_data, &gen_cost, read);CHKERRQ(ierr);
 
@@ -59,6 +60,15 @@ int main(int argc,char **argv)
               PMAX = 8,       //maximum real power output
               PMIN = 9;       //minimum real power output
 
+  //gen cost colmn indices
+              //PW_LINEAR = 1,
+              //POLYNOMIAL = 2,
+              //MODEL = 0,        //Cost model: 1 = piecewise linear, 2 = polynomial
+              //STARTUP = 1,      //Startup cost in US dollars
+              //SHUTDOWN = 2,     //Shutdown cost in US dollars
+              //NCOST = 3,        //number breakpoints in piewewise linear cost function, or number of coefficients in polynomial cost function
+  PetscScalar COST = 4;         //Parameters defining total cost function begin in this column
+
 
   PetscInt nb, nl;
   ierr = MatGetSize(bus_data, &nb, NULL);CHKERRQ(ierr);
@@ -78,9 +88,6 @@ int main(int argc,char **argv)
   ierr = MatGetSize(gen_data, &ng, NULL);CHKERRQ(ierr);
 
   Vec x, xmin, xmax, Pg, Qg, Vm, Va;
-  ierr = makeVector(&x, nb*4);CHKERRQ(ierr);
-  ierr = makeVector(&xmin, nb*4);CHKERRQ(ierr);
-  ierr = makeVector(&xmax, nb*4);CHKERRQ(ierr);
   ierr = makeVector(&Pg, ng);CHKERRQ(ierr);
   ierr = makeVector(&Qg, ng);CHKERRQ(ierr);
   ierr = makeVector(&Vm, nb);CHKERRQ(ierr);
@@ -123,11 +130,11 @@ int main(int argc,char **argv)
   ierr = VecGetSize(h, &niq);CHKERRQ(ierr);
   ierr = VecGetSize(gn, &neqnln);CHKERRQ(ierr);
   ierr = VecGetSize(hn, &niqnln);CHKERRQ(ierr);
-
+  PetscInt xSize = 2 * nb + 2 * ng;
 
   //d2f = sparse(1:20, 1:20, 0);
   Mat d2f;
-  ierr = makeSparse(&d2f, 4 * nb, 4 * nb, 0, 0);CHKERRQ(ierr);  //This might need to be assembled before using
+  ierr = makeSparse(&d2f, xSize, xSize, 0, 0);CHKERRQ(ierr);  //This might need to be assembled before using
 
 
   //z0 = 1;
@@ -178,19 +185,52 @@ int main(int argc,char **argv)
 
   //f2 = branch_data(il, F_BUS);
   Vec f2;
-  // ierr = getSubMatVector(&f2, branch_data, il, F_BUS, nl2);
-  //
-  //
-  // //t2 = branch_data(il, T_BUS);
+  ierr = getSubMatVector(&f2, branch_data, il, F_BUS, nl);
+
+
+  //t2 = branch_data(il, T_BUS);
   Vec t2;
-  // ierr = getSubMatVector(&t2, branch_data, il, T_BUS, nl2);
+  ierr = getSubMatVector(&t2, branch_data, il, T_BUS, nl);
 
 
   //Cf = sparse(1:nl2, f2, ones(nl2, 1), nl2, nb);
-
-
   //Ct = sparse(1:nl2, t2, ones(nl2, 1), nl2, nb);
+  ierr = MatDestroy(&Cf);CHKERRQ(ierr); //variable name is being reused
+  ierr = MatDestroy(&Ct);CHKERRQ(ierr);
+// PetscPrintf(PETSC_COMM_WORLD, "Cf, Ct2\n");
+//   //Mat Ct2;
+//   ierr = makeSparse(&Cf, nl2, nb, 1, 1);CHKERRQ(ierr);
+//   //ierr = makeSparse(&Ct2, nl2, nb, 1, 1);CHKERRQ(ierr);
+// PetscPrintf(PETSC_COMM_WORLD, "Cf, Ct2\n");
+//   PetscScalar const *fArr;
+//   PetscScalar const *tArr;
+//   PetscScalar one = 1.0;
+//   PetscInt max, min;
+//   PetscPrintf(PETSC_COMM_WORLD, "Cf, Ct2\n");
+//   ierr = VecGetArrayRead(f2, &fArr);CHKERRQ(ierr);
+//   //ierr = VecGetArrayRead(t2, &tArr);CHKERRQ(ierr);
+//   ierr = MatGetOwnershipRange(Cf, &min, &max);CHKERRQ(ierr);
+// PetscPrintf(PETSC_COMM_WORLD, "Cf, Ct2\n");
+//   for(PetscInt i = min; i < max; i++)
+//   {
+//     ierr = MatSetValue(Cf, i, fArr[i - min] - 1, one, INSERT_VALUES);CHKERRQ(ierr);
+//     //ierr = MatSetValue(Ct2, i, tArr[i - min] - 1, one, INSERT_VALUES);CHKERRQ(ierr);
+//   }
+//   ierr = VecRestoreArrayRead(f2, &fArr);CHKERRQ(ierr);
+//   //ierr = VecRestoreArrayRead(t2, &tArr);CHKERRQ(ierr);
+//
+//   ierr = MatAssemblyBegin(Cf, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+//   //ierr = MatAssemblyBegin(Ct2, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+//   ierr = MatAssemblyEnd(Cf, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+//   //ierr = MatAssemblyEnd(Ct2, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
+
+  //[fun, df] = f_fcn1(x, gen_cost, baseMVA)
+  PetscScalar fun;
+  Vec df;
+
+  ierr = PetscPrintf(PETSC_COMM_WORLD, "\nCalculating Cost\n====================\n");CHKERRQ(ierr);
+  ierr = calcCost(x, gen_cost, baseMVA, COST, nb, &fun, &df);CHKERRQ(ierr);
 
 
 
@@ -207,6 +247,7 @@ int main(int argc,char **argv)
   ierr = MatDestroy(&bus_data);CHKERRQ(ierr);
   ierr = MatDestroy(&gen_cost);CHKERRQ(ierr);
   ierr = MatDestroy(&gen_data);CHKERRQ(ierr);
+  //ierr = MatDestroy(&Ct2);CHKERRQ(ierr);
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = VecDestroy(&xmin);CHKERRQ(ierr);
   ierr = VecDestroy(&xmax);CHKERRQ(ierr);
@@ -220,8 +261,8 @@ int main(int argc,char **argv)
   ierr = VecDestroy(&z);CHKERRQ(ierr);
   ierr = VecDestroy(&mu);CHKERRQ(ierr);
   ierr = VecDestroy(&e);CHKERRQ(ierr);
-  //ierr = VecDestroy(&f2);CHKERRQ(ierr);
-  //ierr = VecDestroy(&t2);CHKERRQ(ierr);
+  ierr = VecDestroy(&f2);CHKERRQ(ierr);
+  ierr = VecDestroy(&t2);CHKERRQ(ierr);
   ierr = ISDestroy(&il);CHKERRQ(ierr);
   ierr = ISDestroy(&k);CHKERRQ(ierr);
 

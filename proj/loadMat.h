@@ -1,6 +1,6 @@
 #include <petscmat.h>
 
-PetscErrorCode loadMatrices(Mat *bus_data, Mat *branch_data, Mat *gen_data, Mat *gen_cost, PetscBool read);
+PetscErrorCode loadMatrices(Mat *bus_data, Mat *branch_data, Mat *gen_data, Mat *gen_cost, PetscInt read);
 
 PetscInt* intArray(PetscInt n);
 

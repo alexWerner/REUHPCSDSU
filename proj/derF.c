@@ -11,6 +11,8 @@ PetscErrorCode setupConstraints(PetscInt nb, Mat bus_data, Mat gen_data, PetscSc
   PetscInt ng;
   ierr = MatGetSize(gen_data, &ng, NULL);CHKERRQ(ierr);
 
+  PetscInt xSize = 2 * nb + 2 * ng;
+
   //Setting up max and min values (lines 97 - 114)
   Vec Va_max, Va_min, Vm_max, Vm_min, Pgmax, Pgmin, Qgmax, Qgmin;
   ierr = makeVector(&Va_max, nb);CHKERRQ(ierr);
@@ -100,9 +102,12 @@ PetscErrorCode setupConstraints(PetscInt nb, Mat bus_data, Mat gen_data, PetscSc
   //x = [Va; Vm; Pg; Qg];
   //xmin = [Va_min; Vm_min; Pgmin; Qgmin];
   //xmax = [Va_max; Vm_max; Pgmax; Qgmax];
-  ierr = stack4Vectors(*x, *Va, *Vm, *Pg, *Qg, nb);CHKERRQ(ierr);
-  ierr = stack4Vectors(*xmin, Va_min, Vm_min, Pgmin, Qgmin, nb);CHKERRQ(ierr);
-  ierr = stack4Vectors(*xmax, Va_max, Vm_max, Pgmax, Qgmax, nb);CHKERRQ(ierr);
+  Vec xVecs[4] = {*Va, *Vm, *Pg, *Qg};
+  Vec xmaxVecs[4] = {Va_max, Vm_max, Pgmax, Qgmax};
+  Vec xminVecs[4] = {Va_min, Vm_min, Pgmin, Qgmin};
+  ierr = stackNVectors(x, xVecs, 4, xSize);CHKERRQ(ierr);
+  ierr = stackNVectors(xmax, xmaxVecs, 4, xSize);CHKERRQ(ierr);
+  ierr = stackNVectors(xmin, xminVecs, 4, xSize);CHKERRQ(ierr);
 
 
   //Clean up memory
@@ -114,40 +119,6 @@ PetscErrorCode setupConstraints(PetscInt nb, Mat bus_data, Mat gen_data, PetscSc
   ierr = VecDestroy(&Pgmin);CHKERRQ(ierr);
   ierr = VecDestroy(&Qgmax);CHKERRQ(ierr);
   ierr = VecDestroy(&Qgmin);CHKERRQ(ierr);
-  return ierr;
-}
-
-
-//Puts 4 vectors on top of each other and saves it to the first parameter
-PetscErrorCode stack4Vectors(Vec x, Vec Va, Vec Vm, Vec Pg, Vec Qg, PetscInt nb) //Potentially rewrite for n vectors
-{
-  PetscErrorCode ierr;
-
-  PetscScalar const *VaArr;
-  PetscScalar const *VmArr;
-  PetscScalar const *PgArr;
-  PetscScalar const *QgArr;
-  PetscInt max, min;
-  ierr = VecGetArrayRead(Va, &VaArr);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(Vm, &VmArr);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(Pg, &PgArr);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(Qg, &QgArr);CHKERRQ(ierr);
-  ierr = VecGetOwnershipRange(Va, &min, &max);CHKERRQ(ierr);
-  for(PetscInt i = min; i < max; i++)
-  {
-    VecSetValue(x, i,          VaArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
-    VecSetValue(x, i + nb,     VmArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
-    VecSetValue(x, i + nb * 2, PgArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
-    VecSetValue(x, i + nb * 3, QgArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
-  }
-  ierr = VecRestoreArrayRead(Va, &VaArr);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(Vm, &VmArr);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(Pg, &PgArr);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(Qg, &QgArr);CHKERRQ(ierr);
-
-  ierr = VecAssemblyBegin(x);CHKERRQ(ierr);
-  ierr = VecAssemblyEnd(x);CHKERRQ(ierr);
-
   return ierr;
 }
 
@@ -167,7 +138,8 @@ PetscErrorCode getLimitedLines(Mat branch_data, PetscScalar RATE_A, PetscInt nl,
   PetscInt min, max, n;
   ierr = VecGetOwnershipRange(rateA, &min, &max);CHKERRQ(ierr);
   ierr = VecGetLocalSize(rateA, &n);CHKERRQ(ierr);
-  PetscInt *vals = malloc(n * sizeof(*vals));
+  PetscInt *vals;
+  ierr = PetscMalloc1(n, &vals);CHKERRQ(ierr);
   for(PetscInt i = min; i < max; i++)
   {
     if(aArr[i - min] == 0)
@@ -179,7 +151,7 @@ PetscErrorCode getLimitedLines(Mat branch_data, PetscScalar RATE_A, PetscInt nl,
   ierr = VecDestroy(&rateA);CHKERRQ(ierr);
 
   ierr = ISCreateGeneral(PETSC_COMM_WORLD, n, vals, PETSC_COPY_VALUES, il);CHKERRQ(ierr);
-  free(vals);
+  PetscFree(vals);
 
   ierr = ISCreateGeneral(PETSC_COMM_WORLD, 1, &max, PETSC_COPY_VALUES, &ilTemp);CHKERRQ(ierr);
   ierr = ISDifference(*il, ilTemp, il);CHKERRQ(ierr);
@@ -203,6 +175,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   PetscInt nb, ng;
   ierr = MatGetSize(bus_data, &nb, NULL);CHKERRQ(ierr);
   ierr = MatGetSize(gen_data, &ng, NULL);CHKERRQ(ierr);
+
+  PetscInt xSize = 2 * nb + 2 * ng;
 
 
   //gen_buses = gen_data(:, GEN_BUS);
@@ -262,6 +236,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecWAXPY(Sbus, -1, Sload, Sbusg);CHKERRQ(ierr);
 
 
+  PetscPrintf(PETSC_COMM_WORLD, "\nCalculating V\n====================\n");
   //V = Vm .* exp(1j * Va);
   Vec V, VaWork;
   ierr = makeVector(&V, nb);CHKERRQ(ierr);
@@ -320,6 +295,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecDestroy(&flowMaxTemp);CHKERRQ(ierr);
 
 
+  PetscPrintf(PETSC_COMM_WORLD, "\nCalculating Sf, St\n====================\n");
   //Sf = V(branch_data(il, F_BUS)) .* conj(Yf(il, :) * V);
   Vec ilFVals;
   Mat YfIl;
@@ -339,7 +315,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecGetOwnershipRange(ilFVals, &min, &max);CHKERRQ(ierr);
   PetscInt n;
   ierr = VecGetLocalSize(ilFVals, &n);CHKERRQ(ierr);
-  PetscInt *SfVals = malloc(n * sizeof(*SfVals));
+  PetscInt *SfVals;
+  ierr = PetscMalloc1(n, &SfVals);CHKERRQ(ierr);
   for(PetscInt i = min; i < max; i++)
   {
     SfVals[i - min] = ilFVArr[i - min]-1;
@@ -348,7 +325,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
 
   IS isFV;
   ierr = ISCreateGeneral(PETSC_COMM_WORLD, n, SfVals, PETSC_COPY_VALUES, &isFV);CHKERRQ(ierr);
-  free(SfVals);
+  PetscFree(SfVals);
 
   Vec VfInd;
   ierr = VecGetSubVector(V, isFV, &VfInd);CHKERRQ(ierr);
@@ -377,7 +354,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecGetArrayRead(ilTVals, &ilTVArr);CHKERRQ(ierr);
   ierr = VecGetOwnershipRange(ilTVals, &min, &max);CHKERRQ(ierr);
   ierr = VecGetLocalSize(ilTVals, &n);CHKERRQ(ierr);
-  PetscInt *StVals = malloc(n * sizeof(*StVals));
+  PetscInt *StVals;
+  ierr = PetscMalloc1(n, &StVals);
   for(PetscInt i = min; i < max; i++)
   {
     StVals[i - min] = ilTVArr[i - min]-1;
@@ -386,7 +364,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
 
   IS isTV;
   ierr = ISCreateGeneral(PETSC_COMM_WORLD, n, StVals, PETSC_COPY_VALUES, &isTV);CHKERRQ(ierr);
-  free(StVals);
+  PetscFree(StVals);
 
   Vec VtInd;
   ierr = VecGetSubVector(V, isTV, &VtInd);CHKERRQ(ierr);
@@ -397,6 +375,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecDestroy(&ilTVals);CHKERRQ(ierr);
 
 
+  PetscPrintf(PETSC_COMM_WORLD, "\nCalculating hn\n====================\n");
   //hn = [Sf .* conj(Sf) - flow_max;
   //      St .* conj(St) - flow_max ];
   ierr = makeVector(hn, nl2 * 2);CHKERRQ(ierr);
@@ -436,7 +415,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
 
   //n = length(V);            same as nb
   //ng = size(gen_data, 1);   hasn't changed
-  //n_var = length(x);        same as 4 * nb
+  //n_var = length(x);        same as xSize
 
 
   //Ibus = Ybus * V
@@ -510,6 +489,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecRestoreArrayRead(genBus, &negCgArr);CHKERRQ(ierr);
 
 
+  PetscPrintf(PETSC_COMM_WORLD, "\nCalculating dgn\n====================\n");
   //dgn = sparse(2*nb, n_var);
   //dgn(:, [1:5 6:10 11:15 16:20]) = [
   //    real([dSbus_dVa dSbus_dVm]) neg_Cg sparse(nb, ng);  %% P mismatch w.r.t Va, Vm, Pg, Qg
@@ -518,7 +498,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   //dgn = dgn';
   //Potentially come back to this and remove zeros
   Mat dgnT, dgn;
-  ierr = makeSparse(&dgnT, 2 * nb, 4 * nb, 4 * nb, 4 * nb);CHKERRQ(ierr);
+  ierr = makeSparse(&dgnT, 2 * nb, xSize, xSize, xSize);CHKERRQ(ierr);
 
   Mat realVa, imagVa, realVm, imagVm;
   ierr = MatDuplicate(dSbus_dVa, MAT_COPY_VALUES, &realVa);CHKERRQ(ierr);
@@ -531,11 +511,16 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = MatRealPart(realVm);CHKERRQ(ierr);
   ierr = MatImaginaryPart(imagVm);CHKERRQ(ierr);
 
-  PetscScalar *realVaArr = malloc(nb * nb * sizeof(*realVaArr));
-  PetscScalar *imagVaArr = malloc(nb * nb * sizeof(*imagVaArr));
-  PetscScalar *realVmArr = malloc(nb * nb * sizeof(*realVmArr));
-  PetscScalar *imagVmArr = malloc(nb * nb * sizeof(*imagVmArr));
-  PetscScalar *negCgArr2 = malloc(nb * nb * sizeof(*negCgArr2));
+  PetscScalar *realVaArr;
+  ierr = PetscMalloc1(nb * nb, &realVaArr);CHKERRQ(ierr);
+  PetscScalar *imagVaArr;
+  ierr = PetscMalloc1(nb * nb, &imagVaArr);CHKERRQ(ierr);
+  PetscScalar *realVmArr;
+  ierr = PetscMalloc1(nb * nb, &realVmArr);CHKERRQ(ierr);
+  PetscScalar *imagVmArr;
+  ierr = PetscMalloc1(nb * nb, &imagVmArr);CHKERRQ(ierr);
+  PetscScalar *negCgArr2;
+  ierr = PetscMalloc1(nb * nb, &negCgArr2);CHKERRQ(ierr);
   PetscInt *nbArr = intArray(nb);
   PetscInt *nbArr2 = intArray2(nb, nb * 2);
   PetscInt *ngArr = intArray(ng);
@@ -549,30 +534,41 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = MatGetValues(realVm, max - min, rowsArr, nb, nbArr, realVmArr);CHKERRQ(ierr);
   ierr = MatGetValues(imagVm, max - min, rowsArr, nb, nbArr, imagVmArr);CHKERRQ(ierr);
   ierr = MatGetValues(neg_Cg, max - min, rowsArr, ng, ngArr, negCgArr2);CHKERRQ(ierr);
-  for(PetscInt i = min; i < max; i++)
-  {
-    ierr = MatSetValues(dgnT, max - min, rowsArr, nb, nbArr, realVaArr, INSERT_VALUES);CHKERRQ(ierr);
-    ierr = MatSetValues(dgnT, max - min, rowsArr, nb, nbArr2, realVmArr, INSERT_VALUES);CHKERRQ(ierr);
-    ierr = MatSetValues(dgnT, max - min, rowsArr2, nb, nbArr, imagVaArr, INSERT_VALUES);CHKERRQ(ierr);
-    ierr = MatSetValues(dgnT, max - min, rowsArr2, nb, nbArr2, imagVmArr, INSERT_VALUES);CHKERRQ(ierr);
-    ierr = MatSetValues(dgnT, max - min, rowsArr, ng, ngArr3, negCgArr2, INSERT_VALUES);CHKERRQ(ierr);
-    ierr = MatSetValues(dgnT, max - min, rowsArr2, ng, ngArr4, negCgArr2, INSERT_VALUES);CHKERRQ(ierr);
-  }
-  free(ngArr);
-  free(ngArr3);
-  free(ngArr4);
-  free(nbArr);
-  free(nbArr2);
-  free(rowsArr);
-  free(rowsArr2);
-  free(realVaArr);
-  free(imagVaArr);
-  free(realVmArr);
-  free(imagVmArr);
-  free(negCgArr2);
+
+  //Try going through this and only inserting the nonzero values into the matrix instead of all of them
+  PetscPrintf(PETSC_COMM_WORLD, "1\n");
+  ierr = MatSetValues(dgnT, max - min, rowsArr, nb, nbArr, realVaArr, INSERT_VALUES);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD, "2\n");
+  ierr = MatSetValues(dgnT, max - min, rowsArr, nb, nbArr2, realVmArr, INSERT_VALUES);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD, "3\n");
+  ierr = MatSetValues(dgnT, max - min, rowsArr2, nb, nbArr, imagVaArr, INSERT_VALUES);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD, "4\n");
+  ierr = MatSetValues(dgnT, max - min, rowsArr2, nb, nbArr2, imagVmArr, INSERT_VALUES);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD, "5\n");
+  ierr = MatSetValues(dgnT, max - min, rowsArr, ng, ngArr3, negCgArr2, INSERT_VALUES);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD, "6\n");
+  ierr = MatSetValues(dgnT, max - min, rowsArr2, ng, ngArr4, negCgArr2, INSERT_VALUES);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD, "7\n");
+
   ierr = MatAssemblyBegin(dgnT, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD, "Assembling dgn\n");
   ierr = MatAssemblyEnd(dgnT, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD, "End Assembly\n");
+  PetscFree(ngArr);
+  PetscFree(ngArr3);
+  PetscFree(ngArr4);
+  PetscFree(nbArr);
+  PetscFree(nbArr2);
+  PetscFree(rowsArr);
+  PetscFree(rowsArr2);
+  PetscFree(realVaArr);
+  PetscFree(imagVaArr);
+  PetscFree(realVmArr);
+  PetscFree(imagVmArr);
+  PetscFree(negCgArr2);
+  PetscPrintf(PETSC_COMM_WORLD, "Pre-transpose\n");
   ierr = MatTranspose(dgnT, MAT_INITIAL_MATRIX, &dgn);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD, "Post-transpose\n");
 
   ierr = MatDestroy(&realVa);CHKERRQ(ierr);
   ierr = MatDestroy(&imagVa);CHKERRQ(ierr);
@@ -587,7 +583,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
 
   //nl1 = length(f1); same as nl2
 
-
+  PetscPrintf(PETSC_COMM_WORLD, "\nCalculating If, It\n====================\n");
   //If = Yf(il, :) * V;
   //It = Yt(il, :) * V;
   Vec If, It;
@@ -634,7 +630,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   //diagVnorm = sparse(1:nb, 1:nb, Vnorm, nb, nb);
   //Both matrices computed above
 
-
+  PetscPrintf(PETSC_COMM_WORLD, "\nCalculating dSf, dSt stuff\n====================\n");
   //dSf_dVa = 1j * (conj(diagIf) * sparse(1:nl1, f1, V(f1), nl1, nb) - diagVf * conj(Yf(il, :) * diagV));
   //dSf_dVm = conj(diagIf) * sparse(1:nl1, f1, Vnorm(f1), nl1, nb) + diagVf * conj(Yf(il, :) * diagVnorm;
   //dSt_dVa = 1j * (conj(diagIt) * sparse(1:nl1, t1, V(t1), nl1, nb) - diagVt * conj(Yt(il, :) * diagV));
@@ -691,7 +687,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = matRealPMatImag(&dAt_dVm, dAt_dPt, dAt_dQt, *dSt_dVm);CHKERRQ(ierr);
   ierr = matRealPMatImag(&dAt_dVa, dAt_dPt, dAt_dQt, *dSt_dVa);CHKERRQ(ierr);
 
-
+  PetscPrintf(PETSC_COMM_WORLD, "\nCalculating dhn\n====================\n");
   //dhn = sparse(2*nl2, n_var);
   //dhn(:, [1:5 6:10]) = [
   //  dAf_dVa, dAf_dVm;
@@ -699,12 +695,16 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   //];
   //Potentially come back to and remove zeros
   Mat dhnT, dhn;
-  ierr = makeSparse(&dhnT, 2 * nl2, 4 * nb, 4 * nb, 4 * nb);CHKERRQ(ierr);
+  ierr = makeSparse(&dhnT, 2 * nl2, xSize, xSize, xSize);CHKERRQ(ierr);
 
-  PetscScalar faArr[nl2 * nb];
-  PetscScalar fmArr[nl2 * nb];
-  PetscScalar taArr[nl2 * nb];
-  PetscScalar tmArr[nl2 * nb];
+  PetscScalar *faArr;
+  ierr = PetscMalloc1(nl2 * nb, &faArr);CHKERRQ(ierr);
+  PetscScalar *fmArr;
+  ierr = PetscMalloc1(nl2 * nb, &fmArr);CHKERRQ(ierr);
+  PetscScalar *taArr;
+  ierr = PetscMalloc1(nl2 * nb, &taArr);CHKERRQ(ierr);
+  PetscScalar *tmArr;
+  ierr = PetscMalloc1(nl2 * nb, &tmArr);CHKERRQ(ierr);
   nbArr = intArray(nb);
   nbArr2 = intArray2(nb, nb * 2);
   ierr = MatGetOwnershipRange(dAf_dVa, &min, &max);CHKERRQ(ierr);
@@ -722,10 +722,14 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
     ierr = MatSetValues(dhnT, max - min, rowsArr2, nb, nbArr, taArr, INSERT_VALUES);CHKERRQ(ierr);
     ierr = MatSetValues(dhnT, max - min, rowsArr2, nb, nbArr2, tmArr, INSERT_VALUES);CHKERRQ(ierr);
   }
-  free(nbArr);
-  free(nbArr2);
-  free(rowsArr);
-  free(rowsArr2);
+  PetscFree(nbArr);
+  PetscFree(nbArr2);
+  PetscFree(rowsArr);
+  PetscFree(rowsArr2);
+  PetscFree(faArr);
+  PetscFree(fmArr);
+  PetscFree(taArr);
+  PetscFree(tmArr);
   ierr = MatAssemblyBegin(dhnT, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(dhnT, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatTranspose(dhnT, MAT_INITIAL_MATRIX, &dhn);CHKERRQ(ierr);
@@ -734,16 +738,16 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   //AA = speye(length(x));
   Mat AA;
   Vec vec4nb;
-  ierr = makeVector(&vec4nb, 4 * nb);CHKERRQ(ierr);
+  ierr = makeVector(&vec4nb, xSize);CHKERRQ(ierr);
   ierr = VecSet(vec4nb, 1);CHKERRQ(ierr);
-  ierr = makeDiagonalMat(&AA, vec4nb, 4 * nb);CHKERRQ(ierr);
+  ierr = makeDiagonalMat(&AA, vec4nb, xSize);CHKERRQ(ierr);
 
 
   //ieq = find( abs(xmax-xmin) <= eps );        %% equality constraints
   IS ieq;
   Vec absDiff;
   PetscScalar eps = 0.000000000000001;
-  ierr = makeVector(&absDiff, 4 * nb);CHKERRQ(ierr);
+  ierr = makeVector(&absDiff, xSize);CHKERRQ(ierr);
   ierr = VecWAXPY(absDiff, -1, xmin, xmax);CHKERRQ(ierr);
   ierr = VecAbs(absDiff);CHKERRQ(ierr);
   ierr = find(&ieq, lessEqual, &absDiff, &eps, 1);
@@ -777,7 +781,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
 
   //be = xmax(ieq, 1);
   Vec be;
-  ierr = VecGetSubVector(xmax, ieq, &be);CHKERRQ(ierr);
+  ierr = getSubVector(xmax, ieq, &be);CHKERRQ(ierr);
 
 
   //Ai  = [ AA(ilt, :); -AA(igt, :); AA(ibx, :); -AA(ibx, :) ];
@@ -798,45 +802,58 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = ISGetSize(ibx, &ibxN);CHKERRQ(ierr);
   ierr = ISGetSize(ieq, &ieqN);CHKERRQ(ierr);
 
-  ierr = makeSparse(&Ai, iltN + igtN + 2 * ibxN, 4 * nb, 4 * nb, 4 * nb);CHKERRQ(ierr);
+  ierr = makeSparse(&Ai, iltN + igtN + 2 * ibxN, xSize, xSize, xSize);CHKERRQ(ierr);
 
-  PetscScalar iltArr[nl2 * nb];
-  PetscScalar igtArr[nl2 * nb];
-  PetscScalar ibxArr[nl2 * nb];
-  PetscScalar ibxNArr[nl2 * nb];
-  nbArr = intArray(4 * nb);
+  PetscScalar *iltArr;
+  ierr = PetscMalloc1(iltN * xSize, &iltArr);CHKERRQ(ierr);
+  PetscScalar *igtArr;
+  ierr = PetscMalloc1(igtN * xSize, &igtArr);CHKERRQ(ierr);
+  PetscScalar *ibxArr;
+  ierr = PetscMalloc1(ibxN * xSize, &ibxArr);CHKERRQ(ierr);
+  PetscScalar *ibxNArr;
+  ierr = PetscMalloc1(ibxN * xSize, &ibxNArr);CHKERRQ(ierr);
+  nbArr = intArray(xSize);
   ierr = MatGetOwnershipRange(AAilt, &min, &max);CHKERRQ(ierr);
   rowsArr = intArray2(min, max);
   rowsArr2 = intArray2(min, max);
-  ierr = MatGetValues(AAilt, max - min, rowsArr, nb * 4, nbArr, iltArr);CHKERRQ(ierr);
-  ierr = MatSetValues(Ai, max - min, rowsArr2, nb * 4, nbArr, iltArr, INSERT_VALUES);CHKERRQ(ierr);
-  free(rowsArr2);
+  ierr = MatGetValues(AAilt, max - min, rowsArr, xSize, nbArr, iltArr);CHKERRQ(ierr);
+  ierr = MatSetValues(Ai, max - min, rowsArr2, xSize, nbArr, iltArr, INSERT_VALUES);CHKERRQ(ierr);
+  PetscFree(rowsArr);
+  PetscFree(rowsArr2);
 
   ierr = MatGetOwnershipRange(AAigt, &min, &max);CHKERRQ(ierr);
   rowsArr = intArray2(min, max);
   rowsArr2 = intArray2(min + iltN, max + iltN);
-  ierr = MatGetValues(AAigt, max - min, rowsArr, nb * 4, nbArr, igtArr);CHKERRQ(ierr);
-  ierr = MatSetValues(Ai, max - min, rowsArr2, nb * 4, nbArr, igtArr, INSERT_VALUES);CHKERRQ(ierr);
-  free(rowsArr2);
+  ierr = MatGetValues(AAigt, max - min, rowsArr, xSize, nbArr, igtArr);CHKERRQ(ierr);
+  ierr = MatSetValues(Ai, max - min, rowsArr2, xSize, nbArr, igtArr, INSERT_VALUES);CHKERRQ(ierr);
+  PetscFree(rowsArr);
+  PetscFree(rowsArr2);
 
   ierr = MatGetOwnershipRange(AAibx, &min, &max);CHKERRQ(ierr);
   rowsArr = intArray2(min, max);
   rowsArr2 = intArray2(min + iltN + igtN, max + iltN + igtN);
-  ierr = MatGetValues(AAibx, max - min, rowsArr, nb * 4, nbArr, ibxArr);CHKERRQ(ierr);
-  ierr = MatSetValues(Ai, max - min, rowsArr2, nb * 4, nbArr, ibxArr, INSERT_VALUES);CHKERRQ(ierr);
-  free(rowsArr2);
+
+  ierr = MatGetValues(AAibx, max - min, rowsArr, xSize, nbArr, ibxArr);CHKERRQ(ierr);
+  ierr = MatSetValues(Ai, max - min, rowsArr2, xSize, nbArr, ibxArr, INSERT_VALUES);CHKERRQ(ierr);
+  PetscFree(rowsArr);
+  PetscFree(rowsArr2);
 
   ierr = MatGetOwnershipRange(AAibxN, &min, &max);CHKERRQ(ierr);
   rowsArr = intArray2(min, max);
   rowsArr2 = intArray2(min + iltN + igtN + ibxN, max + iltN + igtN + ibxN);
-  ierr = MatGetValues(AAibxN, max - min, rowsArr, nb * 4, nbArr, ibxNArr);CHKERRQ(ierr);
-  ierr = MatSetValues(Ai, max - min, rowsArr2, nb * 4, nbArr, ibxNArr, INSERT_VALUES);CHKERRQ(ierr);
-  free(rowsArr);
-  free(rowsArr2);
-  free(nbArr);
+  ierr = MatGetValues(AAibxN, max - min, rowsArr, xSize, nbArr, ibxNArr);CHKERRQ(ierr);
+  ierr = MatSetValues(Ai, max - min, rowsArr2, xSize, nbArr, ibxNArr, INSERT_VALUES);CHKERRQ(ierr);
 
   ierr = MatAssemblyBegin(Ai, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(Ai, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+  PetscFree(nbArr);
+  PetscFree(rowsArr2);
+  PetscFree(rowsArr);
+  PetscFree(iltArr);
+  PetscFree(igtArr);
+  PetscFree(ibxArr);
+  PetscFree(ibxNArr);
 
 
   //bi  = [ xmax(ilt, 1); -xmin(igt, 1); xmax(ibx, 1); -xmin(ibx, 1) ];
@@ -845,6 +862,9 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = getSubVector(xmax, ibx, &maxIbx);CHKERRQ(ierr);
   ierr = getSubVector(xmin, igt, &minIgt);CHKERRQ(ierr);
   ierr = getSubVector(xmin, ibx, &minIbx);CHKERRQ(ierr);
+
+  ISView(igt, PETSC_VIEWER_STDOUT_WORLD);
+  VecView(minIgt, PETSC_VIEWER_STDOUT_WORLD);
 
   ierr = VecScale(minIgt, -1);CHKERRQ(ierr);
   ierr = VecScale(minIbx, -1);CHKERRQ(ierr);
@@ -857,7 +877,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecDestroy(&minIgt);CHKERRQ(ierr);
   ierr = VecDestroy(&minIbx);CHKERRQ(ierr);
 
-
+  PetscPrintf(PETSC_COMM_WORLD, "\nCalculating h\n====================\n");
   //h = [hn; Ai * x - bi];          %% inequality constraints
   Vec Aix;
   ierr = MatCreateVecs(Ai, NULL, &Aix);CHKERRQ(ierr);
@@ -871,7 +891,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
 
   ierr = VecDestroy(&Aix);CHKERRQ(ierr);
 
-
+  PetscPrintf(PETSC_COMM_WORLD, "\nCalculating g\n====================\n");
   //g = [gn; Ae * x - be];          %% equality constraints
   Vec Aex;
   ierr = MatCreateVecs(Ae, NULL, &Aex);CHKERRQ(ierr);
@@ -895,9 +915,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
 
   ierr = remZeros(dh);CHKERRQ(ierr);
 
-PetscPrintf(PETSC_COMM_WORLD, "Farther\n");
+
   //dg = [dgn Ae'];                 %% 1st derivative of equalities
-  //ierr = MatTranspose(Ae, MAT_INPLACE_MATRIX, &Ae);CHKERRQ(ierr);
   Mat AeT;
   ierr = MatTranspose(Ae, MAT_INITIAL_MATRIX, &AeT);CHKERRQ(ierr);
   ierr = matJoinMatWidth(dg, dgn, AeT);CHKERRQ(ierr);
@@ -971,7 +990,8 @@ PetscErrorCode remZeros(Mat *m)
 
   ierr = makeSparse(&mTemp, r, c, c, c);
 
-  PetscScalar *vals = malloc(r * c * sizeof(*vals));
+  PetscScalar *vals;
+  ierr = PetscMalloc1(r * c, &vals);CHKERRQ(ierr);
   ierr = MatGetOwnershipRange(mTemp, &min, &max);CHKERRQ(ierr);
   PetscInt *rowArr = intArray2(min, max);
   PetscInt *colArr = intArray2(0, c);
@@ -987,7 +1007,7 @@ PetscErrorCode remZeros(Mat *m)
     }
   }
 
-  free(vals);
+  PetscFree(vals);
   ierr = MatAssemblyBegin(mTemp, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(mTemp, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
@@ -1009,8 +1029,10 @@ PetscErrorCode matJoinMatWidth(Mat *out, Mat left, Mat right)
 
   ierr = makeSparse(out, rows, lCol + rCol, lCol + rCol, lCol + rCol);CHKERRQ(ierr);
 
-  PetscScalar *leftVals = malloc(rows * lCol * sizeof(*leftVals));
-  PetscScalar *rightVals = malloc(rows * rCol * sizeof(*rightVals));
+  PetscScalar *leftVals;
+  ierr = PetscMalloc1(rows * lCol, &leftVals);CHKERRQ(ierr);
+  PetscScalar *rightVals;
+  ierr = PetscMalloc1(rows * rCol, &rightVals);CHKERRQ(ierr);
 
   ierr = MatGetOwnershipRange(left, &min, &max);CHKERRQ(ierr);
   PetscInt *rowArr = intArray2(min, max);
@@ -1024,16 +1046,16 @@ PetscErrorCode matJoinMatWidth(Mat *out, Mat left, Mat right)
   ierr = MatSetValues(*out, max - min, rowArr, lCol, colArr, leftVals, INSERT_VALUES);CHKERRQ(ierr);
   ierr = MatSetValues(*out, max - min, rowArr, rCol, colArr2, rightVals, INSERT_VALUES);CHKERRQ(ierr);
 
-  free(leftVals);
-  free(rightVals);
+  PetscFree(leftVals);
+  PetscFree(rightVals);
 
   ierr = MatAssemblyBegin(*out, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(*out, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
-  free(rowArr);
-  free(colArr);
-  free(colArrR);
-  free(colArr2);
+  PetscFree(rowArr);
+  PetscFree(colArr);
+  PetscFree(colArrR);
+  PetscFree(colArr2);
 
   return ierr;
 }
@@ -1154,7 +1176,8 @@ PetscErrorCode makeDiagonalMatRI(Mat *m, Vec vals, PetscInt dim, char r, PetscSc
 //Return an array {n1, n1+1, N1+2, ..., n2-1}
 PetscInt* intArray2(PetscInt n1, PetscInt n2)
 {
-  PetscInt *arr = malloc((n2-n1)*sizeof(*arr));
+  PetscInt *arr;
+  PetscMalloc1(n2 - n1, &arr);
   for(PetscInt i = 0; i < n2 - n1; i++)
   {
     arr[i] = i + n1;
@@ -1253,7 +1276,8 @@ PetscErrorCode find(IS *is, PetscBool (*cond)(const PetscScalar ** , PetscScalar
   PetscInt min, max, n;
   ierr = VecGetOwnershipRange(vecs[0], &min, &max);CHKERRQ(ierr);
   ierr = VecGetLocalSize(vecs[0], &n);CHKERRQ(ierr);
-  PetscInt *vals = malloc(n * sizeof(*vals));
+  PetscInt *vals;
+  ierr = PetscMalloc1(n, &vals);
   for(PetscInt i = min; i < max; i++)
   {
     if(cond(vecVals, compVals, i - min))
@@ -1265,7 +1289,7 @@ PetscErrorCode find(IS *is, PetscBool (*cond)(const PetscScalar ** , PetscScalar
     ierr = VecRestoreArrayRead(vecs[i], &vecVals[i]);CHKERRQ(ierr);
 
   ierr = ISCreateGeneral(PETSC_COMM_WORLD, n, vals, PETSC_COPY_VALUES, is);CHKERRQ(ierr);
-  free(vals);
+  PetscFree(vals);
 
   IS isTemp;
   ierr = ISCreateGeneral(PETSC_COMM_WORLD, 1, &max, PETSC_COPY_VALUES, &isTemp);CHKERRQ(ierr);
