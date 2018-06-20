@@ -537,17 +537,17 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
 
   //Try going through this and only inserting the nonzero values into the matrix instead of all of them
   PetscPrintf(PETSC_COMM_WORLD, "1\n");
-  ierr = MatSetValues(dgnT, max - min, rowsArr, nb, nbArr, realVaArr, INSERT_VALUES);CHKERRQ(ierr);
+  ierr = addNonzeros(dgnT, max - min, rowsArr, nb, nbArr, realVaArr);CHKERRQ(ierr);
   PetscPrintf(PETSC_COMM_WORLD, "2\n");
-  ierr = MatSetValues(dgnT, max - min, rowsArr, nb, nbArr2, realVmArr, INSERT_VALUES);CHKERRQ(ierr);
+  ierr = addNonzeros(dgnT, max - min, rowsArr, nb, nbArr2, realVmArr);CHKERRQ(ierr);
   PetscPrintf(PETSC_COMM_WORLD, "3\n");
-  ierr = MatSetValues(dgnT, max - min, rowsArr2, nb, nbArr, imagVaArr, INSERT_VALUES);CHKERRQ(ierr);
+  ierr = addNonzeros(dgnT, max - min, rowsArr2, nb, nbArr, imagVaArr);CHKERRQ(ierr);
   PetscPrintf(PETSC_COMM_WORLD, "4\n");
-  ierr = MatSetValues(dgnT, max - min, rowsArr2, nb, nbArr2, imagVmArr, INSERT_VALUES);CHKERRQ(ierr);
+  ierr = addNonzeros(dgnT, max - min, rowsArr2, nb, nbArr2, imagVmArr);CHKERRQ(ierr);
   PetscPrintf(PETSC_COMM_WORLD, "5\n");
-  ierr = MatSetValues(dgnT, max - min, rowsArr, ng, ngArr3, negCgArr2, INSERT_VALUES);CHKERRQ(ierr);
+  ierr = addNonzeros(dgnT, max - min, rowsArr, ng, ngArr3, negCgArr2);CHKERRQ(ierr);
   PetscPrintf(PETSC_COMM_WORLD, "6\n");
-  ierr = MatSetValues(dgnT, max - min, rowsArr2, ng, ngArr4, negCgArr2, INSERT_VALUES);CHKERRQ(ierr);
+  ierr = addNonzeros(dgnT, max - min, rowsArr2, ng, ngArr4, negCgArr2);CHKERRQ(ierr);
   PetscPrintf(PETSC_COMM_WORLD, "7\n");
 
   ierr = MatAssemblyBegin(dgnT, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
@@ -975,7 +975,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = ISDestroy(&ilt);CHKERRQ(ierr);
   ierr = ISDestroy(&ibx);CHKERRQ(ierr);
 
-  return ierr;
+  return 0;
 }
 
 
@@ -1325,4 +1325,20 @@ PetscBool greaterLessGreater(const PetscScalar **vecVals, PetscScalar *compVals,
   return (PetscRealPart(vecVals[0][i]) > PetscRealPart(compVals[0]))
     && (PetscRealPart(vecVals[1][i]) < PetscRealPart(compVals[1]))
     && (PetscRealPart(vecVals[2][i]) > PetscRealPart(compVals[2]));
+}
+
+PetscErrorCode addNonzeros(Mat m, PetscInt r, PetscInt *rowArr, PetscInt c, PetscInt *colArr, PetscScalar *vals)
+{
+  PetscErrorCode ierr;
+  for(int i = 0; i < r; i++)
+  {
+    for(int j = 0; j < c; j++)
+    {
+      if(vals[i * c + j] != 0)
+      {
+        ierr = MatSetValue(m, rowArr[i], colArr[j], vals[i * c + j], INSERT_VALUES);CHKERRQ(ierr);
+      }
+    }
+  }
+  return 0;
 }

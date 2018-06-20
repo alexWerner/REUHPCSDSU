@@ -33,16 +33,60 @@ PetscErrorCode calcCost(Vec x, Mat gen_cost, PetscScalar baseMVA, PetscInt COST,
   ierr = ISCreateGeneral(PETSC_COMM_WORLD, 1, &max, PETSC_COPY_VALUES, &isTemp);CHKERRQ(ierr);
   ierr = ISDifference(is, isTemp, &is);CHKERRQ(ierr);
 
-  ierr = ISView(is, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  Vec xSub, xSub2;
+  ierr = getSubVector(x, is, &xSub);CHKERRQ(ierr);
+  ierr = VecScale(xSub, baseMVA);CHKERRQ(ierr);
+
+  ierr = restructureVec(xSub, &xSub2);
+
+  ierr = VecDot(xSub2, cost, fun);CHKERRQ(ierr);
 
 
   //df = [zeros(10,1 ); gen_cost(:, COST) / baseMVA; zeros(5, 1)];
   ierr = makeVector(df, 2 * nb + 2 * ng);CHKERRQ(ierr);
   ierr = VecSet(*df, 0);CHKERRQ(ierr);
 
+  ierr = VecScale(cost, 1 / baseMVA);CHKERRQ(ierr);
+
+  PetscScalar const *costArr;
+  ierr = VecGetArrayRead(cost, &costArr);CHKERRQ(ierr);
+  ierr = VecGetOwnershipRange(cost, &min, &max);CHKERRQ(ierr);
+  for(PetscInt i = min; i < max; i++)
+  {
+    ierr = VecSetValue(*df, i + nb * 2, costArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
+  }
+  ierr = VecAssemblyBegin(*df);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(*df);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(cost, &costArr);CHKERRQ(ierr);
+
+  ierr = VecDestroy(&xSub);CHKERRQ(ierr);
+  ierr = VecDestroy(&xSub2);CHKERRQ(ierr);
+  ierr = VecDestroy(&cost);CHKERRQ(ierr);
+  ierr = ISDestroy(&is);CHKERRQ(ierr);
+
+  return ierr;
+}
 
 
-  ierr = VecDestroy(&cost);
+PetscErrorCode restructureVec(Vec a, Vec *b)
+{
+  PetscErrorCode ierr;
+
+  PetscInt size, max, min;
+  ierr = VecGetSize(a, &size);CHKERRQ(ierr);
+
+  ierr = makeVector(b, size);CHKERRQ(ierr);
+
+  PetscScalar const *xArr;
+  ierr = VecGetArrayRead(a, &xArr);CHKERRQ(ierr);
+  ierr = VecGetOwnershipRange(a, &min, &max);CHKERRQ(ierr);
+  for(PetscInt i = min; i < max; i++)
+  {
+    ierr = VecSetValue(*b, i, xArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
+  }
+  ierr = VecAssemblyBegin(*b);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(*b);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(a, &xArr);CHKERRQ(ierr);
 
   return ierr;
 }

@@ -41,3 +41,5 @@ PetscBool lessEqual(const PetscScalar **vecVals, PetscScalar *compVals, PetscInt
 PetscBool greaterEqualgreater(const PetscScalar **vecVals, PetscScalar *compVals, PetscInt i);
 PetscBool lessEqualless(const PetscScalar **vecVals, PetscScalar *compVals, PetscInt i);
 PetscBool greaterLessGreater(const PetscScalar **vecVals, PetscScalar *compVals, PetscInt i);
+
+PetscErrorCode addNonzeros(Mat m, PetscInt r, PetscInt *rowsArr, PetscInt c, PetscInt *nbArr, PetscScalar *vals);

@@ -3,6 +3,7 @@ static char help[] = "Power grid simulation";
 #include "admMat.h"
 #include "loadMat.h"
 #include "derF.h"
+#include "derS.h"
 #include "calcCost.h"
 
 int main(int argc,char **argv)
@@ -134,7 +135,10 @@ int main(int argc,char **argv)
 
   //d2f = sparse(1:20, 1:20, 0);
   Mat d2f;
-  ierr = makeSparse(&d2f, xSize, xSize, 0, 0);CHKERRQ(ierr);  //This might need to be assembled before using
+  ierr = makeSparse(&d2f, xSize, xSize, 0, 0);CHKERRQ(ierr);
+
+  ierr = MatAssemblyBegin(d2f, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(d2f, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
 
   //z0 = 1;
@@ -195,34 +199,32 @@ int main(int argc,char **argv)
 
   //Cf = sparse(1:nl2, f2, ones(nl2, 1), nl2, nb);
   //Ct = sparse(1:nl2, t2, ones(nl2, 1), nl2, nb);
-  ierr = MatDestroy(&Cf);CHKERRQ(ierr); //variable name is being reused
+
+  ierr = MatDestroy(&Cf);CHKERRQ(ierr); //Reusing variable names, need to clear first
   ierr = MatDestroy(&Ct);CHKERRQ(ierr);
-// PetscPrintf(PETSC_COMM_WORLD, "Cf, Ct2\n");
-//   //Mat Ct2;
-//   ierr = makeSparse(&Cf, nl2, nb, 1, 1);CHKERRQ(ierr);
-//   //ierr = makeSparse(&Ct2, nl2, nb, 1, 1);CHKERRQ(ierr);
-// PetscPrintf(PETSC_COMM_WORLD, "Cf, Ct2\n");
-//   PetscScalar const *fArr;
-//   PetscScalar const *tArr;
-//   PetscScalar one = 1.0;
-//   PetscInt max, min;
-//   PetscPrintf(PETSC_COMM_WORLD, "Cf, Ct2\n");
-//   ierr = VecGetArrayRead(f2, &fArr);CHKERRQ(ierr);
-//   //ierr = VecGetArrayRead(t2, &tArr);CHKERRQ(ierr);
-//   ierr = MatGetOwnershipRange(Cf, &min, &max);CHKERRQ(ierr);
-// PetscPrintf(PETSC_COMM_WORLD, "Cf, Ct2\n");
-//   for(PetscInt i = min; i < max; i++)
-//   {
-//     ierr = MatSetValue(Cf, i, fArr[i - min] - 1, one, INSERT_VALUES);CHKERRQ(ierr);
-//     //ierr = MatSetValue(Ct2, i, tArr[i - min] - 1, one, INSERT_VALUES);CHKERRQ(ierr);
-//   }
-//   ierr = VecRestoreArrayRead(f2, &fArr);CHKERRQ(ierr);
-//   //ierr = VecRestoreArrayRead(t2, &tArr);CHKERRQ(ierr);
-//
-//   ierr = MatAssemblyBegin(Cf, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-//   //ierr = MatAssemblyBegin(Ct2, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-//   ierr = MatAssemblyEnd(Cf, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-//   //ierr = MatAssemblyEnd(Ct2, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = makeSparse(&Cf, nl2, nb, 1, 1);CHKERRQ(ierr);
+  ierr = makeSparse(&Ct, nl2, nb, 1, 1);CHKERRQ(ierr);
+
+  PetscScalar const *fArr;
+  PetscScalar const *tArr;
+  PetscInt max, min;
+
+  ierr = VecGetArrayRead(f2, &fArr);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(t2, &tArr);CHKERRQ(ierr);
+  ierr = VecGetOwnershipRange(f2, &min, &max);CHKERRQ(ierr);
+
+  for(PetscInt i = min; i < max; i++)
+  {
+    ierr = MatSetValue(Cf, i, fArr[i - min] - 1, 1, INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatSetValue(Ct, i, tArr[i - min] - 1, 1, INSERT_VALUES);CHKERRQ(ierr);
+  }
+  ierr = VecRestoreArrayRead(f2, &fArr);CHKERRQ(ierr);
+  ierr = VecRestoreArrayRead(t2, &tArr);CHKERRQ(ierr);
+
+  ierr = MatAssemblyBegin(Cf, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyBegin(Ct, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(Cf, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(Ct, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
 
   //[fun, df] = f_fcn1(x, gen_cost, baseMVA)
@@ -231,15 +233,114 @@ int main(int argc,char **argv)
 
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nCalculating Cost\n====================\n");CHKERRQ(ierr);
   ierr = calcCost(x, gen_cost, baseMVA, COST, nb, &fun, &df);CHKERRQ(ierr);
+  ierr = PetscPrintf(PETSC_COMM_WORLD, "Cost:%f\n", fun);
 
 
 
 
+  Mat Lxx;
+  ierr = makeSparse(&Lxx, xSize, xSize, 0, 0);CHKERRQ(ierr);
+
+  ierr = MatAssemblyBegin(Lxx, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(Lxx, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+
+  //Main Loop
+  ierr = PetscPrintf(PETSC_COMM_WORLD, "\nEntering Main Loop\n====================\n");CHKERRQ(ierr);
+  for(PetscInt i = 0; i < 1; i++)
+  {
+    //zinvdiag = sparse(1:niq, 1:niq, 1 ./ z, niq, niq);
+    Vec zInv;
+    ierr = VecDuplicate(z, &zInv);CHKERRQ(ierr);
+    ierr = VecCopy(z, zInv);CHKERRQ(ierr);
+    ierr = VecReciprocal(zInv);CHKERRQ(ierr);
+    Mat zinvdiag;
+    ierr = makeDiagonalMat(&zinvdiag, zInv, niq);CHKERRQ(ierr);
+    ierr = VecDestroy(&zInv);CHKERRQ(ierr);
+
+
+    //mudiag = sparse(1:niq, 1:niq, mu, niq, niq);
+    Mat mudiag;
+    ierr = makeDiagonalMat(&mudiag, mu, niq);CHKERRQ(ierr);
+
+
+    //dh_zinv = dh * zinvdiag;
+    Mat dh_zinv;
+    ierr = MatMatMult(dh, zinvdiag, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &dh_zinv);CHKERRQ(ierr);
+
+
+    //Lx = df + dg * lam + dh * mu;
+    Vec Lx;
+    ierr = makeVector(&Lx, xSize);CHKERRQ(ierr);
+    Vec dglam, dhmu;
+    ierr = MatCreateVecs(dg, NULL, &dglam);CHKERRQ(ierr);
+    ierr = MatCreateVecs(dh, NULL, &dhmu);CHKERRQ(ierr);
+
+    ierr = MatMult(dg, lam, dglam);CHKERRQ(ierr);
+    ierr = MatMult(dh, mu, dhmu);CHKERRQ(ierr);
+
+    ierr = VecCopy(df, Lx);CHKERRQ(ierr);
+    ierr = VecAXPBYPCZ(Lx, 1, 1, 1, dglam, dhmu);CHKERRQ(ierr);
+    ierr = VecDestroy(&dglam);CHKERRQ(ierr);
+    ierr = VecDestroy(&dhmu);CHKERRQ(ierr);
+
+
+    //Lxx = hess_fcn1(x,lam,mu,nb, Ybus,Yf,Yt,Cf,Ct,Sf,St,d2f,dSf_dVa,dSf_dVm,dSt_dVm,dSt_dVa);
+    ierr = PetscPrintf(PETSC_COMM_WORLD, "\t[%d]Calculating Second Derivative\n\t====================\n", i);CHKERRQ(ierr);
+    calcSecondDerivative(x, lam, mu, nb, Ybus, Yf, Yt, Cf, Ct, Sf, St, d2f, dSf_dVa,
+      dSf_dVm, dSt_dVm, dSt_dVa, il, Lxx);
+
+
+    //M = Lxx + dh_zinv * mudiag * dh';
+    Mat M;
+    ierr = MatDuplicate(Lxx, MAT_COPY_VALUES, &M);CHKERRQ(ierr);
+    Mat dhT;
+    ierr = MatTranspose(dh, MAT_INITIAL_MATRIX, &dhT);CHKERRQ(ierr);
+    Mat zmudhT;
+    ierr = MatMatMatMult(dh_zinv, mudiag, dhT, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &zmudhT);CHKERRQ(ierr);
+    ierr = MatAXPY(M, 1, zmudhT, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
+    ierr = MatDestroy(&dhT);CHKERRQ(ierr);
+    ierr = MatDestroy(&zmudhT);CHKERRQ(ierr);
+
+
+    //N = Lx + dh_zinv * (mudiag * h + gamma * e);
+    Vec N;
+    ierr = makeVector(&N, xSize);CHKERRQ(ierr);
+    ierr = VecCopy(Lx, N);CHKERRQ(ierr);
+    Vec muh, gammae;
+    ierr = MatCreateVecs(mudiag, NULL, &muh);CHKERRQ(ierr);
+    ierr = MatMult(mudiag, h, muh);CHKERRQ(ierr);
+
+    ierr = VecDuplicate(e, &gammae);CHKERRQ(ierr);
+    ierr = VecCopy(e, gammae);CHKERRQ(ierr);
+    ierr = VecScale(gammae, gamma);CHKERRQ(ierr);
+
+    ierr = VecAXPY(muh, 1, gammae);CHKERRQ(ierr);
+    ierr = VecDestroy(&gammae);CHKERRQ(ierr);
+
+    Vec dhzinvmuh;
+    ierr = MatCreateVecs(dh_zinv, NULL, &dhzinvmuh);CHKERRQ(ierr);
+    ierr = MatMult(dh_zinv, muh, dhzinvmuh);CHKERRQ(ierr);
+
+    ierr = VecAXPY(N, 1, dhzinvmuh);CHKERRQ(ierr);
 
 
 
-  ierr = MatDestroy(&Cf);CHKERRQ(ierr);
-  ierr = MatDestroy(&Ct);CHKERRQ(ierr);
+
+    //W = [M dg;dg' sparse(neq, neq)];
+    //B = [-N; -g];
+
+
+    ierr = MatDestroy(&zinvdiag);CHKERRQ(ierr);
+    ierr = MatDestroy(&mudiag);CHKERRQ(ierr);
+    ierr = MatDestroy(&dh_zinv);CHKERRQ(ierr);
+    ierr = MatDestroy(&M);CHKERRQ(ierr);
+    ierr = VecDestroy(&Lx);CHKERRQ(ierr);
+  }
+
+
+
+
   ierr = MatDestroy(&Yf);CHKERRQ(ierr);
   ierr = MatDestroy(&Yt);CHKERRQ(ierr);
   ierr = MatDestroy(&Ybus);CHKERRQ(ierr);
@@ -247,7 +348,9 @@ int main(int argc,char **argv)
   ierr = MatDestroy(&bus_data);CHKERRQ(ierr);
   ierr = MatDestroy(&gen_cost);CHKERRQ(ierr);
   ierr = MatDestroy(&gen_data);CHKERRQ(ierr);
-  //ierr = MatDestroy(&Ct2);CHKERRQ(ierr);
+  ierr = MatDestroy(&Cf);CHKERRQ(ierr);
+  ierr = MatDestroy(&Ct);CHKERRQ(ierr);
+  // ierr = MatDestroy(&y);CHKERRQ(ierr);
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = VecDestroy(&xmin);CHKERRQ(ierr);
   ierr = VecDestroy(&xmax);CHKERRQ(ierr);
