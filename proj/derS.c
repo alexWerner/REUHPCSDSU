@@ -208,33 +208,6 @@ PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, PetscInt nb, Mat Ybu
 }
 
 
-PetscErrorCode boundedIS(Vec v, PetscInt minLim, PetscInt maxLim, IS *is)
-{
-  PetscErrorCode ierr;
-
-  PetscInt min, max, n;
-  ierr = VecGetOwnershipRange(v, &min, &max);CHKERRQ(ierr);
-  ierr = VecGetLocalSize(v, &n);CHKERRQ(ierr);
-  PetscInt *vals;
-  ierr = PetscMalloc1(n, &vals);CHKERRQ(ierr);
-  for(PetscInt i = min; i < max; i++)
-  {
-    if(i >= minLim && i < maxLim)
-      vals[i - min] = i;
-    else
-      vals[i - min] = max;
-  }
-
-  ierr = ISCreateGeneral(PETSC_COMM_WORLD, n, vals, PETSC_COPY_VALUES, is);CHKERRQ(ierr);
-  PetscFree(vals);
-  IS isTemp;
-  ierr = ISCreateGeneral(PETSC_COMM_WORLD, 1, &max, PETSC_COPY_VALUES, &isTemp);CHKERRQ(ierr);
-  ierr = ISDifference(*is, isTemp, is);CHKERRQ(ierr);
-
-  return ierr;
-}
-
-
 PetscErrorCode d2Sbus_dV2(Mat Ybus, Vec V, Vec lam, Mat *Gaa, Mat *Gav, Mat *Gva, Mat *Gvv)
 {
   PetscErrorCode ierr;

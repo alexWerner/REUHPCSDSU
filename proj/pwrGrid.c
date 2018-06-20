@@ -111,7 +111,7 @@ int main(int argc,char **argv)
   Mat dh, dg, dSf_dVa, dSf_dVm, dSt_dVm, dSt_dVa;
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nFirst Derivative\n====================\n");CHKERRQ(ierr);
   calcFirstDerivative(x, Ybus, bus_data, gen_data, branch_data, il, Yf, Yt, nl2, nl,
-    baseMVA, xmax, xmin, GEN_BUS, PD, QD, F_BUS, T_BUS, RATE_A, Pg, Qg, Vm, Va, &h, &g,
+    baseMVA, xmax, xmin, GEN_BUS, PD, QD, F_BUS, T_BUS, RATE_A, &h, &g,
     &dh, &dg, &gn, &hn, &dSf_dVa, &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
 
   // ierr = PetscPrintf(PETSC_COMM_WORLD, "\nh\n====================\n");CHKERRQ(ierr);
@@ -248,7 +248,7 @@ int main(int argc,char **argv)
 
   //Main Loop
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nEntering Main Loop\n====================\n");CHKERRQ(ierr);
-  for(PetscInt i = 0; i < 1; i++)
+  for(PetscInt i = 0; i < 18; i++)
   {
     //zinvdiag = sparse(1:niq, 1:niq, 1 ./ z, niq, niq);
     Vec zInv;
@@ -317,7 +317,6 @@ int main(int argc,char **argv)
     ierr = VecScale(gammae, gamma);CHKERRQ(ierr);
 
     ierr = VecAXPY(muh, 1, gammae);CHKERRQ(ierr);
-    ierr = VecDestroy(&gammae);CHKERRQ(ierr);
 
     Vec dhzinvmuh;
     ierr = MatCreateVecs(dh_zinv, NULL, &dhzinvmuh);CHKERRQ(ierr);
@@ -412,7 +411,7 @@ int main(int argc,char **argv)
 
 
     //dxdlam = W \ B;
-    ierr = PetscPrintf(PETSC_COMM_WORLD, "\t[%d]Solving System\n\t====================\n", i);CHKERRQ(ierr);
+    ierr = PetscPrintf(PETSC_COMM_WORLD, "\t[%d]Solving System\n\t====================\n\t", i);CHKERRQ(ierr);
     KSP ksp;
     ierr = KSPCreate(PETSC_COMM_WORLD, &ksp);CHKERRQ(ierr);
     ierr = KSPSetOperators(ksp, W, W);CHKERRQ(ierr);
@@ -425,26 +424,213 @@ int main(int argc,char **argv)
     Vec dxdlam;
     ierr = MatCreateVecs(W, &dxdlam, NULL);CHKERRQ(ierr);
     ierr = KSPSolve(ksp, B, dxdlam);CHKERRQ(ierr);
+    ierr = KSPDestroy(&ksp);CHKERRQ(ierr);
+
+
+    //nx = size(x,1);
+    //This line is not needed, stored in xSize
+
+
+    //dx = dxdlam(1:nx, 1);
+    Vec dx;
+    ierr = getVecIndices(dxdlam, 0, xSize, &dx);CHKERRQ(ierr);
+
+
+    //dlam = dxdlam(nx+(1:neq), 1);
+    Vec dlam;
+    ierr = getVecIndices(dxdlam, xSize, xSize + neq, &dlam);CHKERRQ(ierr);
+
+
+    //dz = -h - z - dh' * dx;
+    ierr = MatTranspose(dh, MAT_INITIAL_MATRIX, &dhT);CHKERRQ(ierr);
+
+    Vec dhdx;
+    ierr = MatCreateVecs(dhT, NULL, &dhdx);CHKERRQ(ierr);
+    ierr = MatMult(dhT, dx, dhdx);CHKERRQ(ierr);
+    ierr = MatDestroy(&dhT);CHKERRQ(ierr);
+
+    Vec dz;
+    ierr = VecDuplicate(z, &dz);CHKERRQ(ierr);
+    ierr = VecAXPBY(dhdx, -1, -1, z);CHKERRQ(ierr);
+    ierr = VecWAXPY(dz, -1, h, dhdx);CHKERRQ(ierr);
+    ierr = VecDestroy(&dhdx);CHKERRQ(ierr);
+
+
+    //dmu = -mu + zinvdiag *(gamma*e - mudiag * dz);
+    Vec dmu;
+    Vec mudz;
+    ierr = MatCreateVecs(mudiag, NULL, &mudz);CHKERRQ(ierr);
+    ierr = MatMult(mudiag, dz, mudz);CHKERRQ(ierr);
+    ierr = VecAYPX(mudz, -1, gammae);CHKERRQ(ierr);
+
+    Vec zinvgammamu;
+    ierr = MatCreateVecs(zinvdiag, NULL, &zinvgammamu);CHKERRQ(ierr);
+    ierr = MatMult(zinvdiag, mudz, zinvgammamu);CHKERRQ(ierr);
+
+    ierr = VecDuplicate(mu, &dmu);CHKERRQ(ierr);
+    ierr = VecWAXPY(dmu, -1, mu, zinvgammamu);CHKERRQ(ierr);
+
+
+    //xi = 0.99995;
+    PetscScalar xi = 0.99995;
+
+
+    //k = find(dz < 0);
+    IS k;
+    PetscScalar zero = 0;
+    ierr = find(&k, less, &dz, &zero, 1);
+
+
+    //if isempty(k)
+    //    alphap = 1;
+    //else
+    //    alphap = min( [xi * min(z(k) ./ -dz(k)) 1] );
+    //end
+    PetscInt kSize;
+    PetscScalar alphap;
+    ierr = ISGetSize(k, &kSize);CHKERRQ(ierr);
+    if(kSize == 0)
+    {
+      alphap = 1;
+    }
+    else
+    {
+      Vec zk, dzk;
+      ierr = getSubVector(z, k, &zk);CHKERRQ(ierr);
+      ierr = getSubVector(dz, k, &dzk);CHKERRQ(ierr);
+      ierr = VecScale(dzk, -1);CHKERRQ(ierr);
+      ierr = VecReciprocal(dzk);CHKERRQ(ierr);
+      Vec quotient;
+      ierr = VecDuplicate(zk, &quotient);CHKERRQ(ierr);
+      ierr = VecPointwiseMult(quotient, zk, dzk);CHKERRQ(ierr);
+      ierr = VecScale(quotient, xi);CHKERRQ(ierr);
+      PetscReal min;
+      ierr = VecMin(quotient, NULL, &min);CHKERRQ(ierr);
+
+      if(min < 1)
+        alphap = min;
+      else
+        alphap = 1;
+
+      ierr = VecDestroy(&zk);CHKERRQ(ierr);
+      ierr = VecDestroy(&dzk);CHKERRQ(ierr);
+      ierr = VecDestroy(&quotient);CHKERRQ(ierr);
+    }
+    ierr = ISDestroy(&k);CHKERRQ(ierr);
+
+    PetscPrintf(PETSC_COMM_WORLD, "\talphap: %f\n", alphap);
 
 
 
-
-    //ierr = KSPView(ksp, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-    ierr = VecView(dxdlam, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-
+    //k = find(dmu < 0);
+    ierr = find(&k, less, &dmu, &zero, 1);
 
 
+    //if isempty(k)
+    //    alphad = 1;
+    //else
+    //    alphad = min( [xi * min(mu(k) ./ -dmu(k)) 1] );
+    //end
+    PetscScalar alphad;
+    ierr = ISGetSize(k, &kSize);CHKERRQ(ierr);
+    if(kSize == 0)
+    {
+      alphad = 1;
+    }
+    else
+    {
+      Vec muk, dmuk;
+      ierr = getSubVector(mu, k, &muk);CHKERRQ(ierr);
+      ierr = getSubVector(dmu, k, &dmuk);CHKERRQ(ierr);
+      ierr = VecScale(dmuk, -1);CHKERRQ(ierr);
+      ierr = VecReciprocal(dmuk);CHKERRQ(ierr);
+      Vec quotient;
+      ierr = VecDuplicate(muk, &quotient);CHKERRQ(ierr);
+      ierr = VecPointwiseMult(quotient, muk, dmuk);CHKERRQ(ierr);
+      ierr = VecScale(quotient, xi);CHKERRQ(ierr);
+      PetscReal min;
+      ierr = VecMin(quotient, NULL, &min);CHKERRQ(ierr);
+
+      if(min < 1)
+        alphad = min;
+      else
+        alphad = 1;
+      ierr = VecDestroy(&muk);CHKERRQ(ierr);
+      ierr = VecDestroy(&dmuk);CHKERRQ(ierr);
+      ierr = VecDestroy(&quotient);CHKERRQ(ierr);
+    }
+    ierr = ISDestroy(&k);CHKERRQ(ierr);
+
+    PetscPrintf(PETSC_COMM_WORLD, "\talphad: %f\n", alphad);
 
 
+    ierr = PetscPrintf(PETSC_COMM_WORLD, "\t[%d]Modifying variables\n\t====================\n", i);CHKERRQ(ierr);
+    //x = x + alphap * dx;
+    //z = z + alphap * dz;
+    //lam = lam + alphad * dlam;
+    //mu  = mu  + alphad * dmu;
+    ierr = VecAXPY(x, alphap, dx);CHKERRQ(ierr);
+    ierr = VecAXPY(z, alphap, dz);CHKERRQ(ierr);
+    ierr = VecAXPY(lam, alphad, dlam);CHKERRQ(ierr);
+    ierr = VecAXPY(mu, alphad, dmu);CHKERRQ(ierr);
+
+
+    //if niq > 0
+    //    gamma = 0.1* (z' * mu) / niq;
+    //end
+    if(niq > 0)
+    {
+      PetscScalar dot;
+      ierr = VecDot(z, mu, &dot);CHKERRQ(ierr);
+      gamma = 0.1 * dot / niq;
+    }
+    PetscPrintf(PETSC_COMM_WORLD, "\tgamma: %f\n", gamma);
+
+
+    //[f, df] = f_fcn1(x,gen_cost,baseMVA);
+    ierr = PetscPrintf(PETSC_COMM_WORLD, "\t[%d]Calculating Cost\n\t====================\n", i);CHKERRQ(ierr);
+    ierr = VecDestroy(&df);CHKERRQ(ierr);
+    ierr = calcCost(x, gen_cost, baseMVA, COST, nb, &fun, &df);CHKERRQ(ierr);
+    ierr = PetscPrintf(PETSC_COMM_WORLD, "\tCost:%f\n", fun);
+
+
+    //[h, g, dh, dg,gn,hn,dSf_dVa,dSf_dVm,dSt_dVm,dSt_dVa,Sf,St] = gh_fcn1(x,Ybus,bus_data,gen_data,branch_data,il,Yf,Yt,baseMVA,xmax,xmin);
+    ierr = PetscPrintf(PETSC_COMM_WORLD, "\t[%d]First Derivative\n\t====================\n\n", i);CHKERRQ(ierr);
+    ierr = VecDestroy(&h);CHKERRQ(ierr);
+    ierr = VecDestroy(&g);CHKERRQ(ierr);
+    ierr = VecDestroy(&gn);CHKERRQ(ierr);
+    ierr = VecDestroy(&hn);CHKERRQ(ierr);
+    ierr = VecDestroy(&Sf);CHKERRQ(ierr);
+    ierr = VecDestroy(&St);CHKERRQ(ierr);
+    ierr = MatDestroy(&dh);CHKERRQ(ierr);
+    ierr = MatDestroy(&dg);CHKERRQ(ierr);
+    ierr = MatDestroy(&dSf_dVa);CHKERRQ(ierr);
+    ierr = MatDestroy(&dSf_dVm);CHKERRQ(ierr);
+    ierr = MatDestroy(&dSt_dVa);CHKERRQ(ierr);
+    ierr = MatDestroy(&dSt_dVm);CHKERRQ(ierr);
+    calcFirstDerivative(x, Ybus, bus_data, gen_data, branch_data, il, Yf, Yt, nl2, nl,
+      baseMVA, xmax, xmin, GEN_BUS, PD, QD, F_BUS, T_BUS, RATE_A, &h, &g,
+      &dh, &dg, &gn, &hn, &dSf_dVa, &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
+
+
+      //Cleanup
     ierr = MatDestroy(&zinvdiag);CHKERRQ(ierr);
     ierr = MatDestroy(&mudiag);CHKERRQ(ierr);
     ierr = MatDestroy(&dh_zinv);CHKERRQ(ierr);
     ierr = MatDestroy(&M);CHKERRQ(ierr);
     ierr = VecDestroy(&Lx);CHKERRQ(ierr);
     ierr = VecDestroy(&B);CHKERRQ(ierr);
+    ierr = VecDestroy(&dxdlam);CHKERRQ(ierr);
+    ierr = VecDestroy(&dx);CHKERRQ(ierr);
+    ierr = VecDestroy(&dz);CHKERRQ(ierr);
+    ierr = VecDestroy(&dlam);CHKERRQ(ierr);
+    ierr = VecDestroy(&dmu);CHKERRQ(ierr);
+    ierr = VecDestroy(&gammae);CHKERRQ(ierr);
   }
 
 
+  ierr = PetscPrintf(PETSC_COMM_WORLD, "\nDone With Main Loop\n====================\n");CHKERRQ(ierr);
+  VecView(x, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
 
   ierr = MatDestroy(&Yf);CHKERRQ(ierr);

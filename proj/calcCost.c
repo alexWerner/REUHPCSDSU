@@ -66,27 +66,3 @@ PetscErrorCode calcCost(Vec x, Mat gen_cost, PetscScalar baseMVA, PetscInt COST,
 
   return ierr;
 }
-
-
-PetscErrorCode restructureVec(Vec a, Vec *b)
-{
-  PetscErrorCode ierr;
-
-  PetscInt size, max, min;
-  ierr = VecGetSize(a, &size);CHKERRQ(ierr);
-
-  ierr = makeVector(b, size);CHKERRQ(ierr);
-
-  PetscScalar const *xArr;
-  ierr = VecGetArrayRead(a, &xArr);CHKERRQ(ierr);
-  ierr = VecGetOwnershipRange(a, &min, &max);CHKERRQ(ierr);
-  for(PetscInt i = min; i < max; i++)
-  {
-    ierr = VecSetValue(*b, i, xArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
-  }
-  ierr = VecAssemblyBegin(*b);CHKERRQ(ierr);
-  ierr = VecAssemblyEnd(*b);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(a, &xArr);CHKERRQ(ierr);
-
-  return ierr;
-}

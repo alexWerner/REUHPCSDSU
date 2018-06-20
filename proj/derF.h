@@ -10,7 +10,7 @@ PetscErrorCode getLimitedLines(Mat branch_data, PetscScalar RATE_A, PetscInt nl,
 PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   Mat branch_data, IS il, Mat Yf, Mat Yt, PetscInt nl2, PetscInt nl, PetscScalar baseMVA, Vec xmax, Vec xmin,
   PetscInt GEN_BUS, PetscInt PD, PetscInt QD, PetscInt F_BUS, PetscInt T_BUS,
-  PetscInt RATE_A, Vec Pg, Vec Qg, Vec Vm, Vec Va, Vec *h, Vec *g, Mat *dh, Mat *dg, Vec *gn, Vec *hn,
+  PetscInt RATE_A, Vec *h, Vec *g, Mat *dh, Mat *dg, Vec *gn, Vec *hn,
   Mat * dSf_dVa, Mat *dSf_dVm, Mat *dSt_dVm, Mat *dSt_dVa, Vec *Sf, Vec *St);
 
 PetscErrorCode remZeros(Mat *m);
@@ -43,3 +43,9 @@ PetscBool lessEqualless(const PetscScalar **vecVals, PetscScalar *compVals, Pets
 PetscBool greaterLessGreater(const PetscScalar **vecVals, PetscScalar *compVals, PetscInt i);
 
 PetscErrorCode addNonzeros(Mat m, PetscInt r, PetscInt *rowsArr, PetscInt c, PetscInt *nbArr, PetscScalar *vals);
+
+PetscErrorCode getVecIndices(Vec v, PetscInt min, PetscInt max, Vec *out);
+
+PetscErrorCode boundedIS(Vec v, PetscInt minLim, PetscInt maxLim, IS *is);
+
+PetscErrorCode restructureVec(Vec a, Vec *b);
