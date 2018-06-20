@@ -536,24 +536,15 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = MatGetValues(neg_Cg, max - min, rowsArr, ng, ngArr, negCgArr2);CHKERRQ(ierr);
 
   //Try going through this and only inserting the nonzero values into the matrix instead of all of them
-  PetscPrintf(PETSC_COMM_WORLD, "1\n");
   ierr = addNonzeros(dgnT, max - min, rowsArr, nb, nbArr, realVaArr);CHKERRQ(ierr);
-  PetscPrintf(PETSC_COMM_WORLD, "2\n");
   ierr = addNonzeros(dgnT, max - min, rowsArr, nb, nbArr2, realVmArr);CHKERRQ(ierr);
-  PetscPrintf(PETSC_COMM_WORLD, "3\n");
   ierr = addNonzeros(dgnT, max - min, rowsArr2, nb, nbArr, imagVaArr);CHKERRQ(ierr);
-  PetscPrintf(PETSC_COMM_WORLD, "4\n");
   ierr = addNonzeros(dgnT, max - min, rowsArr2, nb, nbArr2, imagVmArr);CHKERRQ(ierr);
-  PetscPrintf(PETSC_COMM_WORLD, "5\n");
   ierr = addNonzeros(dgnT, max - min, rowsArr, ng, ngArr3, negCgArr2);CHKERRQ(ierr);
-  PetscPrintf(PETSC_COMM_WORLD, "6\n");
   ierr = addNonzeros(dgnT, max - min, rowsArr2, ng, ngArr4, negCgArr2);CHKERRQ(ierr);
-  PetscPrintf(PETSC_COMM_WORLD, "7\n");
 
   ierr = MatAssemblyBegin(dgnT, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  PetscPrintf(PETSC_COMM_WORLD, "Assembling dgn\n");
   ierr = MatAssemblyEnd(dgnT, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  PetscPrintf(PETSC_COMM_WORLD, "End Assembly\n");
   PetscFree(ngArr);
   PetscFree(ngArr3);
   PetscFree(ngArr4);
@@ -566,9 +557,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   PetscFree(realVmArr);
   PetscFree(imagVmArr);
   PetscFree(negCgArr2);
-  PetscPrintf(PETSC_COMM_WORLD, "Pre-transpose\n");
   ierr = MatTranspose(dgnT, MAT_INITIAL_MATRIX, &dgn);CHKERRQ(ierr);
-  PetscPrintf(PETSC_COMM_WORLD, "Post-transpose\n");
 
   ierr = MatDestroy(&realVa);CHKERRQ(ierr);
   ierr = MatDestroy(&imagVa);CHKERRQ(ierr);
@@ -862,9 +851,6 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = getSubVector(xmax, ibx, &maxIbx);CHKERRQ(ierr);
   ierr = getSubVector(xmin, igt, &minIgt);CHKERRQ(ierr);
   ierr = getSubVector(xmin, ibx, &minIbx);CHKERRQ(ierr);
-
-  ISView(igt, PETSC_VIEWER_STDOUT_WORLD);
-  VecView(minIgt, PETSC_VIEWER_STDOUT_WORLD);
 
   ierr = VecScale(minIgt, -1);CHKERRQ(ierr);
   ierr = VecScale(minIbx, -1);CHKERRQ(ierr);

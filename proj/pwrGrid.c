@@ -1,5 +1,6 @@
 static char help[] = "Power grid simulation";
 
+#include <petscksp.h>
 #include "admMat.h"
 #include "loadMat.h"
 #include "derF.h"
@@ -113,17 +114,17 @@ int main(int argc,char **argv)
     baseMVA, xmax, xmin, GEN_BUS, PD, QD, F_BUS, T_BUS, RATE_A, Pg, Qg, Vm, Va, &h, &g,
     &dh, &dg, &gn, &hn, &dSf_dVa, &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
 
-  ierr = PetscPrintf(PETSC_COMM_WORLD, "\nh\n====================\n");CHKERRQ(ierr);
-  ierr = VecView(h, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-
-  ierr = PetscPrintf(PETSC_COMM_WORLD, "\ng\n====================\n");CHKERRQ(ierr);
-  ierr = VecView(g, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-
-  ierr = PetscPrintf(PETSC_COMM_WORLD, "\ndh\n====================\n");CHKERRQ(ierr);
-  ierr = MatView(dh, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-
-  ierr = PetscPrintf(PETSC_COMM_WORLD, "\ndg\n====================\n");CHKERRQ(ierr);
-  ierr = MatView(dg, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  // ierr = PetscPrintf(PETSC_COMM_WORLD, "\nh\n====================\n");CHKERRQ(ierr);
+  // ierr = VecView(h, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  //
+  // ierr = PetscPrintf(PETSC_COMM_WORLD, "\ng\n====================\n");CHKERRQ(ierr);
+  // ierr = VecView(g, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  //
+  // ierr = PetscPrintf(PETSC_COMM_WORLD, "\ndh\n====================\n");CHKERRQ(ierr);
+  // ierr = MatView(dh, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  //
+  // ierr = PetscPrintf(PETSC_COMM_WORLD, "\ndg\n====================\n");CHKERRQ(ierr);
+  // ierr = MatView(dg, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
 
   PetscInt neq, niq, neqnln, niqnln;
@@ -325,10 +326,114 @@ int main(int argc,char **argv)
     ierr = VecAXPY(N, 1, dhzinvmuh);CHKERRQ(ierr);
 
 
-
-
     //W = [M dg;dg' sparse(neq, neq)];
+    Mat dgT;
+    ierr = MatTranspose(dg, MAT_INITIAL_MATRIX, &dgT);CHKERRQ(ierr);
+    Mat W;
+    ierr = makeSparse(&W, xSize + neq, xSize + neq, xSize + neq, xSize + neq);CHKERRQ(ierr);
+
+    PetscInt max, min;
+    ierr = MatGetOwnershipRange(W, &min, &max);CHKERRQ(ierr);
+    for(PetscInt i = min; i < max; i++)
+    {
+      ierr = MatSetValue(W, i, i, 0, INSERT_VALUES);CHKERRQ(ierr);
+    }
+
+
+    ierr = MatGetOwnershipRange(M, &min, &max);CHKERRQ(ierr);
+    PetscInt *rowsArr = intArray2(min, max);
+
+    PetscScalar *Marr;
+    ierr = PetscMalloc1(xSize * xSize, &Marr);CHKERRQ(ierr);
+    PetscInt *mColArr = intArray2(0, xSize);
+
+    ierr = MatGetValues(M, max - min, rowsArr, xSize, mColArr, Marr);CHKERRQ(ierr);
+    ierr = addNonzeros(W, max - min, rowsArr, xSize, mColArr, Marr);CHKERRQ(ierr);
+    PetscFree(rowsArr);
+    PetscFree(Marr);
+    PetscFree(mColArr);
+
+    ierr = MatGetOwnershipRange(dgT, &min, &max);CHKERRQ(ierr);
+    rowsArr = intArray2(min, max);
+    PetscInt *rowsArrDgT = intArray2(min + xSize, max + xSize);
+
+    PetscScalar *dgTarr;
+    ierr = PetscMalloc1(xSize * neq, &dgTarr);CHKERRQ(ierr);
+    PetscInt *dgTColArr = intArray2(0, xSize);
+
+    ierr = MatGetValues(dgT, max - min, rowsArr, xSize, dgTColArr, dgTarr);CHKERRQ(ierr);
+    ierr = addNonzeros(W, max - min, rowsArrDgT, xSize, dgTColArr, dgTarr);CHKERRQ(ierr);
+    PetscFree(rowsArr);
+    PetscFree(rowsArrDgT);
+    PetscFree(dgTarr);
+    PetscFree(dgTColArr);
+
+    ierr = MatGetOwnershipRange(dg, &min, &max);CHKERRQ(ierr);
+    rowsArr = intArray2(min, max);
+
+    PetscScalar *dgarr;
+    ierr = PetscMalloc1(xSize * neq, &dgarr);CHKERRQ(ierr);
+    PetscInt *dgColArr = intArray2(0, neq);
+    PetscInt *dgColArr2 = intArray2(xSize, xSize + neq);
+
+    ierr = MatGetValues(dg, max - min, rowsArr, neq, dgColArr, dgarr);CHKERRQ(ierr);
+    ierr = addNonzeros(W, max - min, rowsArr, neq, dgColArr2, dgarr);CHKERRQ(ierr);
+    PetscFree(rowsArr);
+    PetscFree(dgarr);
+    PetscFree(dgColArr);
+    PetscFree(dgColArr2);
+
+    ierr = MatAssemblyBegin(W, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+    ierr = MatAssemblyEnd(W, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+
     //B = [-N; -g];
+    Vec negN, negG;
+    ierr = VecDuplicate(N, &negN);CHKERRQ(ierr);
+    ierr = VecCopy(N, negN);CHKERRQ(ierr);
+    ierr = VecScale(negN, -1);CHKERRQ(ierr);
+
+    ierr = VecDuplicate(g, &negG);CHKERRQ(ierr);
+    ierr = VecCopy(g, negG);CHKERRQ(ierr);
+    ierr = VecScale(negG, -1);CHKERRQ(ierr);
+
+    PetscInt Nsize, gsize;
+    ierr = VecGetSize(negN, &Nsize);CHKERRQ(ierr);
+    ierr = VecGetSize(negG, &gsize);CHKERRQ(ierr);
+
+    Vec bvecs[2] = {negN, negG};
+    Vec B;
+    ierr = stackNVectors(&B, bvecs, 2, Nsize + gsize);
+    ierr = VecDestroy(&negN);CHKERRQ(ierr);
+    ierr = VecDestroy(&negG);CHKERRQ(ierr);
+
+
+
+
+
+    //dxdlam = W \ B;
+    ierr = PetscPrintf(PETSC_COMM_WORLD, "\t[%d]Solving System\n\t====================\n", i);CHKERRQ(ierr);
+    KSP ksp;
+    ierr = KSPCreate(PETSC_COMM_WORLD, &ksp);CHKERRQ(ierr);
+    ierr = KSPSetOperators(ksp, W, W);CHKERRQ(ierr);
+
+    ierr = PetscOptionsSetValue(NULL, "-sub_pc_factor_shift_type", "POSITIVE_DEFINITE");CHKERRQ(ierr);
+
+    ierr = KSPSetFromOptions(ksp);CHKERRQ(ierr);
+    ierr = KSPSetUp(ksp);CHKERRQ(ierr);
+
+    Vec dxdlam;
+    ierr = MatCreateVecs(W, &dxdlam, NULL);CHKERRQ(ierr);
+    ierr = KSPSolve(ksp, B, dxdlam);CHKERRQ(ierr);
+
+
+
+
+    //ierr = KSPView(ksp, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+    ierr = VecView(dxdlam, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+
+
+
 
 
     ierr = MatDestroy(&zinvdiag);CHKERRQ(ierr);
@@ -336,6 +441,7 @@ int main(int argc,char **argv)
     ierr = MatDestroy(&dh_zinv);CHKERRQ(ierr);
     ierr = MatDestroy(&M);CHKERRQ(ierr);
     ierr = VecDestroy(&Lx);CHKERRQ(ierr);
+    ierr = VecDestroy(&B);CHKERRQ(ierr);
   }
 
 
@@ -350,7 +456,7 @@ int main(int argc,char **argv)
   ierr = MatDestroy(&gen_data);CHKERRQ(ierr);
   ierr = MatDestroy(&Cf);CHKERRQ(ierr);
   ierr = MatDestroy(&Ct);CHKERRQ(ierr);
-  // ierr = MatDestroy(&y);CHKERRQ(ierr);
+  ierr = MatDestroy(&Lxx);CHKERRQ(ierr);
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = VecDestroy(&xmin);CHKERRQ(ierr);
   ierr = VecDestroy(&xmax);CHKERRQ(ierr);
