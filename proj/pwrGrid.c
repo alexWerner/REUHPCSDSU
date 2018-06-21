@@ -1,6 +1,7 @@
 static char help[] = "Power grid simulation";
 
 #include <petscksp.h>
+#include <stdio.h>
 #include "admMat.h"
 #include "loadMat.h"
 #include "derF.h"
@@ -248,8 +249,9 @@ int main(int argc,char **argv)
 
   //Main Loop
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nEntering Main Loop\n====================\n");CHKERRQ(ierr);
-  for(PetscInt i = 0; i < 18; i++)
+  for(PetscInt i = 0; i < 16; i++)
   {
+
     //zinvdiag = sparse(1:niq, 1:niq, 1 ./ z, niq, niq);
     Vec zInv;
     ierr = VecDuplicate(z, &zInv);CHKERRQ(ierr);
@@ -416,7 +418,11 @@ int main(int argc,char **argv)
     ierr = KSPCreate(PETSC_COMM_WORLD, &ksp);CHKERRQ(ierr);
     ierr = KSPSetOperators(ksp, W, W);CHKERRQ(ierr);
 
-    ierr = PetscOptionsSetValue(NULL, "-sub_pc_factor_shift_type", "POSITIVE_DEFINITE");CHKERRQ(ierr);
+    PC pc;
+
+    ierr = KSPGetPC(ksp, &pc);CHKERRQ(ierr);
+    ierr = PCSetType(pc, PCJACOBI);CHKERRQ(ierr);
+    ierr = PetscOptionsSetValue(NULL, "-ksp_max_it", "1000");CHKERRQ(ierr);
 
     ierr = KSPSetFromOptions(ksp);CHKERRQ(ierr);
     ierr = KSPSetUp(ksp);CHKERRQ(ierr);
