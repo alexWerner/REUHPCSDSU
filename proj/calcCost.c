@@ -31,7 +31,8 @@ PetscErrorCode calcCost(Vec x, Mat gen_cost, PetscScalar baseMVA, PetscInt COST,
 
   IS isTemp;
   ierr = ISCreateGeneral(PETSC_COMM_WORLD, 1, &max, PETSC_COPY_VALUES, &isTemp);CHKERRQ(ierr);
-  ierr = ISDifference(is, isTemp, &is);CHKERRQ(ierr);
+  ierr = indexDifference(is, isTemp, &is);CHKERRQ(ierr);
+  ierr = ISDestroy(&isTemp);CHKERRQ(ierr);
 
   Vec xSub, xSub2;
   ierr = getSubVector(x, is, &xSub);CHKERRQ(ierr);
@@ -63,6 +64,6 @@ PetscErrorCode calcCost(Vec x, Mat gen_cost, PetscScalar baseMVA, PetscInt COST,
   ierr = VecDestroy(&xSub2);CHKERRQ(ierr);
   ierr = VecDestroy(&cost);CHKERRQ(ierr);
   ierr = ISDestroy(&is);CHKERRQ(ierr);
-
+  
   return ierr;
 }

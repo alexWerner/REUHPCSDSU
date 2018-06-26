@@ -1,0 +1,65 @@
+#!/bin/bash
+
+#Check IS Created
+grep "IS .*;" *.c > isCreate
+sed -i 's/.*IS //g;s/;//g;s/ //g;s/,/\n/g' isCreate
+sort isCreate > isTemp
+uniq isTemp > isCreate
+rm isTemp
+
+#Check IS Destroyed
+grep "ISDestroy(&" *.c > isDestroy
+sed -i 's/.*&//g;s/).*//g;' isDestroy
+sort isDestroy > isTemp
+uniq isTemp > isDestroy
+rm isTemp
+
+#Compare IS
+diff -u isCreate isDestroy > isOut
+rm isCreate
+rm isDestroy
+
+
+
+
+#Check Vec Created
+grep "Vec .*;" *.c > vecCreate
+sed -i 's/.*{.*;//g;s/.*Vec //g;s/;//g;s/ //g;s/,/\n/g' vecCreate
+sort vecCreate > vecTemp
+uniq vecTemp > vecCreate
+cat vecCreate | grep . > vecTemp
+mv vecTemp vecCreate
+
+#Check Vec Destroyed
+grep "VecDestroy(&" *.c > vecDestroy
+sed -i 's/.*&//g;s/).*//g;' vecDestroy
+sort vecDestroy > vecTemp
+uniq vecTemp > vecDestroy
+rm vecTemp
+
+#Compare Vec
+diff -u vecCreate vecDestroy > vecOut
+rm vecCreate
+rm vecDestroy
+
+
+
+#Check Mat Created
+grep "Mat .*;" *.c > matCreate
+sed -i 's/.*{.*;//g;s/.*Mat //g;s/;//g;s/ //g;s/,/\n/g' matCreate
+sort matCreate > matTemp
+uniq matTemp > matCreate
+cat matCreate | grep . > matTemp
+mv matTemp matCreate
+
+#Check Mat Destroyed
+grep "MatDestroy(&" *.c > matDestroy
+sed -i 's/.*&//g;s/).*//g;' matDestroy
+sort matDestroy > matTemp
+uniq matTemp > matDestroy
+rm matTemp
+
+#Compare Mat
+diff -u matCreate matDestroy > matOut
+rm matCreate
+rm matDestroy

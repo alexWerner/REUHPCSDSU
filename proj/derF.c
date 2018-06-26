@@ -56,6 +56,7 @@ PetscErrorCode setupConstraints(PetscInt nb, Mat bus_data, Mat gen_data, PetscSc
   }
   ierr = VecRestoreArrayRead(busType, &btArr);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(*Va, &VaArr);CHKERRQ(ierr);
+  ierr = VecDestroy(&busType);CHKERRQ(ierr);
 
   ierr = VecAssemblyBegin(Va_max);CHKERRQ(ierr);
   ierr = VecAssemblyBegin(Va_min);CHKERRQ(ierr);
@@ -154,7 +155,7 @@ PetscErrorCode getLimitedLines(Mat branch_data, PetscScalar RATE_A, PetscInt nl,
   PetscFree(vals);
 
   ierr = ISCreateGeneral(PETSC_COMM_WORLD, 1, &max, PETSC_COPY_VALUES, &ilTemp);CHKERRQ(ierr);
-  ierr = ISDifference(*il, ilTemp, il);CHKERRQ(ierr);
+  ierr = indexDifference(*il, ilTemp, il);CHKERRQ(ierr);
 
   ierr = ISGetSize(*il, nl2);CHKERRQ(ierr);
 
@@ -279,6 +280,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
     VecSetValue(*gn, i + nb, PetscImaginaryPart(misArr[i - min]), INSERT_VALUES);CHKERRQ(ierr);
   }
   ierr = VecRestoreArrayRead(mis, &misArr);CHKERRQ(ierr);
+  ierr = VecDestroy(&mis);CHKERRQ(ierr);
 
   ierr = VecAssemblyBegin(*gn);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(*gn);CHKERRQ(ierr);
@@ -566,6 +568,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = MatDestroy(&imagVa);CHKERRQ(ierr);
   ierr = MatDestroy(&realVm);CHKERRQ(ierr);
   ierr = MatDestroy(&imagVm);CHKERRQ(ierr);
+  ierr = MatDestroy(&dgnT);CHKERRQ(ierr);
+  ierr = MatDestroy(&neg_Cg);CHKERRQ(ierr);
 
 
   //f1 = [1,4];
@@ -725,6 +729,11 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = MatAssemblyBegin(dhnT, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(dhnT, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatTranspose(dhnT, MAT_INITIAL_MATRIX, &dhn);CHKERRQ(ierr);
+  ierr = MatDestroy(&dAf_dVa);CHKERRQ(ierr);
+  ierr = MatDestroy(&dAf_dVm);CHKERRQ(ierr);
+  ierr = MatDestroy(&dAt_dVa);CHKERRQ(ierr);
+  ierr = MatDestroy(&dAt_dVm);CHKERRQ(ierr);
+  ierr = MatDestroy(&dhnT);CHKERRQ(ierr);
 
 
   //AA = speye(length(x));
@@ -733,6 +742,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = makeVector(&vec4nb, xSize);CHKERRQ(ierr);
   ierr = VecSet(vec4nb, 1);CHKERRQ(ierr);
   ierr = makeDiagonalMat(&AA, vec4nb, xSize);CHKERRQ(ierr);
+  ierr = VecDestroy(&vec4nb);CHKERRQ(ierr);
 
 
   //ieq = find( abs(xmax-xmin) <= eps );        %% equality constraints
@@ -777,12 +787,11 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
 
 
   //Ai  = [ AA(ilt, :); -AA(igt, :); AA(ibx, :); -AA(ibx, :) ];
-  //something goes wrong in here when running on 1 processor, change the nb*4
-  //to nb and the issue goes away, but then Ai isn't correct
   Mat Ai, AAilt, AAigt, AAibx, AAibxN;
   ierr = MatCreateSubMatrix(AA, ilt, NULL, MAT_INITIAL_MATRIX, &AAilt);CHKERRQ(ierr);
   ierr = MatCreateSubMatrix(AA, igt, NULL, MAT_INITIAL_MATRIX, &AAigt);CHKERRQ(ierr);
   ierr = MatCreateSubMatrix(AA, ibx, NULL, MAT_INITIAL_MATRIX, &AAibx);CHKERRQ(ierr);
+  ierr = MatDestroy(&AA);CHKERRQ(ierr);
 
   ierr = MatScale(AAigt, -1);CHKERRQ(ierr);
   ierr = MatDuplicate(AAibx, MAT_COPY_VALUES, &AAibxN);CHKERRQ(ierr);
@@ -838,6 +847,10 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
 
   ierr = MatAssemblyBegin(Ai, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(Ai, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatDestroy(&AAilt);CHKERRQ(ierr);
+  ierr = MatDestroy(&AAigt);CHKERRQ(ierr);
+  ierr = MatDestroy(&AAibx);CHKERRQ(ierr);
+  ierr = MatDestroy(&AAibxN);CHKERRQ(ierr);
 
   PetscFree(nbArr);
   PetscFree(rowsArr2);
@@ -901,6 +914,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = MatTranspose(Ai, MAT_INITIAL_MATRIX, &AiT);CHKERRQ(ierr);
   ierr = matJoinMatWidth(dh, dhn, AiT);CHKERRQ(ierr);
   ierr = MatDestroy(&AiT);CHKERRQ(ierr);
+  ierr = MatDestroy(&dhn);CHKERRQ(ierr);
 
   ierr = remZeros(dh);CHKERRQ(ierr);
 
@@ -910,6 +924,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = MatTranspose(Ae, MAT_INITIAL_MATRIX, &AeT);CHKERRQ(ierr);
   ierr = matJoinMatWidth(dg, dgn, AeT);CHKERRQ(ierr);
   ierr = MatDestroy(&AeT);CHKERRQ(ierr);
+  ierr = MatDestroy(&dgn);CHKERRQ(ierr);
 
   ierr = remZeros(dg);CHKERRQ(ierr);
 
@@ -957,6 +972,10 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecDestroy(&VisF);CHKERRQ(ierr);
   ierr = VecDestroy(&VisT);CHKERRQ(ierr);
   ierr = VecDestroy(&absDiff);CHKERRQ(ierr);
+  ierr = VecDestroy(&Pg);CHKERRQ(ierr);
+  ierr = VecDestroy(&Qg);CHKERRQ(ierr);
+  ierr = VecDestroy(&Va);CHKERRQ(ierr);
+  ierr = VecDestroy(&Vm);CHKERRQ(ierr);
   ierr = ISDestroy(&isFV);CHKERRQ(ierr);
   ierr = ISDestroy(&isTV);CHKERRQ(ierr);
   ierr = ISDestroy(&ieq);CHKERRQ(ierr);
@@ -1064,6 +1083,7 @@ PetscErrorCode getSubMatVector(Vec *subVec, Mat m, IS is, PetscInt col, PetscInt
   ierr = VecCopy(subV, *subVec);CHKERRQ(ierr);
 
   ierr = VecRestoreSubVector(v, is, &subV);CHKERRQ(ierr);
+  ierr = VecDestroy(&v);CHKERRQ(ierr);
 
   return ierr;
 }
@@ -1282,7 +1302,8 @@ PetscErrorCode find(IS *is, PetscBool (*cond)(const PetscScalar ** , PetscScalar
 
   IS isTemp;
   ierr = ISCreateGeneral(PETSC_COMM_WORLD, 1, &max, PETSC_COPY_VALUES, &isTemp);CHKERRQ(ierr);
-  ierr = ISDifference(*is, isTemp, is);CHKERRQ(ierr);
+  ierr = indexDifference(*is, isTemp, is);CHKERRQ(ierr);
+  ierr = ISDestroy(&isTemp);CHKERRQ(ierr);
 
   return ierr;
 }
@@ -1377,7 +1398,8 @@ PetscErrorCode boundedIS(Vec v, PetscInt minLim, PetscInt maxLim, IS *is)
   PetscFree(vals);
   IS isTemp;
   ierr = ISCreateGeneral(PETSC_COMM_WORLD, 1, &max, PETSC_COPY_VALUES, &isTemp);CHKERRQ(ierr);
-  ierr = ISDifference(*is, isTemp, is);CHKERRQ(ierr);
+  ierr = indexDifference(*is, isTemp, is);CHKERRQ(ierr);
+  ierr = ISDestroy(&isTemp);CHKERRQ(ierr);
 
   return ierr;
 }
@@ -1403,6 +1425,20 @@ PetscErrorCode restructureVec(Vec a, Vec *b)
   ierr = VecAssemblyBegin(*b);CHKERRQ(ierr);
   ierr = VecAssemblyEnd(*b);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(a, &xArr);CHKERRQ(ierr);
+
+  return ierr;
+}
+
+PetscErrorCode indexDifference(IS a, IS b, IS *c)
+{
+  PetscErrorCode ierr;
+
+  IS d;
+  ierr = ISDifference(a, b, &d);CHKERRQ(ierr);
+  ierr = ISDestroy(c);CHKERRQ(ierr);
+  ierr = ISDuplicate(d, c);CHKERRQ(ierr);
+  ierr = ISCopy(d, *c);CHKERRQ(ierr);
+  ierr = ISDestroy(&d);CHKERRQ(ierr);
 
   return ierr;
 }

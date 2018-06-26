@@ -134,6 +134,8 @@ PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, PetscInt nb, Mat Ybu
   Mat YfIl;
   ierr = MatCreateSubMatrix(Yf, il, NULL, MAT_INITIAL_MATRIX, &YfIl);CHKERRQ(ierr);
   ierr = d2ASbr_dV2(dSf_dVa, dSf_dVm, Sf, Cf, YfIl, V, muF, &Hfaa, &Hfav, &Hfva, &Hfvv);CHKERRQ(ierr);
+  ierr = VecDestroy(&muF);CHKERRQ(ierr);
+  ierr = MatDestroy(&YfIl);CHKERRQ(ierr);
 
 
   //[Htaa, Htav, Htva, Htvv] = d2ASbr_dV2(dSt_dVa, dSt_dVm, St, Ct, Yt(il,:), V, muT);
@@ -141,7 +143,8 @@ PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, PetscInt nb, Mat Ybu
   Mat YtIl;
   ierr = MatCreateSubMatrix(Yt, il, NULL, MAT_INITIAL_MATRIX, &YtIl);CHKERRQ(ierr);
   ierr = d2ASbr_dV2(dSt_dVa, dSt_dVm, St, Ct, YtIl, V, muT, &Htaa, &Htav, &Htva, &Htvv);CHKERRQ(ierr);
-
+  ierr = VecDestroy(&muT);CHKERRQ(ierr);
+  ierr = MatDestroy(&YtIl);CHKERRQ(ierr);
 
 
   //d2H = [
@@ -178,6 +181,14 @@ PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, PetscInt nb, Mat Ybu
   ierr = MatAssemblyEnd(d2H, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatDestroy(&Hf);CHKERRQ(ierr);
   ierr = MatDestroy(&Ht);CHKERRQ(ierr);
+  ierr = MatDestroy(&Hfaa);CHKERRQ(ierr);
+  ierr = MatDestroy(&Hfva);CHKERRQ(ierr);
+  ierr = MatDestroy(&Hfav);CHKERRQ(ierr);
+  ierr = MatDestroy(&Hfvv);CHKERRQ(ierr);
+  ierr = MatDestroy(&Htaa);CHKERRQ(ierr);
+  ierr = MatDestroy(&Htva);CHKERRQ(ierr);
+  ierr = MatDestroy(&Htav);CHKERRQ(ierr);
+  ierr = MatDestroy(&Htvv);CHKERRQ(ierr);
 
   ierr = MatZeroEntries(y);
   ierr = MatAXPY(y, 1, d2H, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
@@ -203,6 +214,7 @@ PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, PetscInt nb, Mat Ybu
   ierr = VecDestroy(&lamQ);CHKERRQ(ierr);
   ierr = VecDestroy(&Vm);CHKERRQ(ierr);
   ierr = VecDestroy(&Va);CHKERRQ(ierr);
+  ierr = VecDestroy(&V);CHKERRQ(ierr);
 
   return ierr;
 }
@@ -437,6 +449,7 @@ PetscErrorCode d2ASbr_dV2(Mat dSbr_dVa, Mat dSbr_dVm, Vec Sbr, Mat Cbr, Mat Ybr,
   Mat YbrT;
   ierr = MatHermitianTranspose(Ybr2, MAT_INITIAL_MATRIX, &YbrT);CHKERRQ(ierr);
   ierr = MatMatMatMult(YbrT, diaglam1, Cbr, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &A);CHKERRQ(ierr);
+  ierr = MatDestroy(&Ybr2);CHKERRQ(ierr);
 
 
   //B = conj(diagV) * A * diagV;
@@ -456,6 +469,7 @@ PetscErrorCode d2ASbr_dV2(Mat dSbr_dVa, Mat dSbr_dVm, Vec Sbr, Mat Cbr, Mat Ybr,
   ierr = VecPointwiseMult(AV, AV, conjV);CHKERRQ(ierr);
 
   ierr = makeDiagonalMat(&D, AV, nb);CHKERRQ(ierr);
+  ierr = VecDestroy(&AV);CHKERRQ(ierr);
 
 
   //E = sparse(1:nb, 1:nb, (A.'*conj(V)) .* V, nb, nb);
@@ -501,9 +515,11 @@ PetscErrorCode d2ASbr_dV2(Mat dSbr_dVa, Mat dSbr_dVm, Vec Sbr, Mat Cbr, Mat Ybr,
   ierr = MatAXPY(SvaTmp, -1, BT, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
   ierr = MatAXPY(SvaTmp, -1, D, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
   ierr = MatAXPY(SvaTmp, 1, E, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
+  ierr = MatDestroy(&BT);CHKERRQ(ierr);
 
   ierr = MatMatMult(G, SvaTmp, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &Sva);CHKERRQ(ierr);
   ierr = MatScale(Sva, PETSC_i);CHKERRQ(ierr);
+  ierr = MatDestroy(&SvaTmp);CHKERRQ(ierr);
 
 
   //Sav = Sva.';
@@ -592,6 +608,8 @@ PetscErrorCode calcHMat(Mat S, Mat dS1, Mat diaglam, Mat dS2, Mat *H)
 
   ierr = MatMatMatMult(dS1T, diaglam, conjDS2, MAT_INITIAL_MATRIX, PETSC_DEFAULT, H);CHKERRQ(ierr);
   ierr = MatAXPY(*H, 1, S, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
+  ierr = MatDestroy(&conjDS2);CHKERRQ(ierr);
+  ierr = MatDestroy(&dS1T);CHKERRQ(ierr);
 
   ierr = MatRealPart(*H);CHKERRQ(ierr);
   ierr = MatScale(*H, 2);CHKERRQ(ierr);

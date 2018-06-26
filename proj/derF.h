@@ -49,3 +49,5 @@ PetscErrorCode getVecIndices(Vec v, PetscInt min, PetscInt max, Vec *out);
 PetscErrorCode boundedIS(Vec v, PetscInt minLim, PetscInt maxLim, IS *is);
 
 PetscErrorCode restructureVec(Vec a, Vec *b);
+
+PetscErrorCode indexDifference(IS a, IS b, IS *c);
