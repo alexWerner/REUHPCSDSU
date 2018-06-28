@@ -1,7 +1,8 @@
-#include <petscmat.h>
-#include "calcCost.h"
+#pragma once
 
-PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, PetscInt nb, Mat Ybus,
+#include "util.h"
+
+PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, Mat Ybus,
   Mat Yf, Mat Yt, Mat Cf, Mat Ct, Vec Sf, Vec St, Mat d2f, Mat dSf_dVa,
   Mat dSf_dVm, Mat dSt_dVm, Mat dSt_dVa, IS il, Mat y);
 

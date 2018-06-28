@@ -1,5 +1,6 @@
-#include <petscmat.h>
-#include "admMat.h"
-#include "derF.h"
+#pragma once
 
-PetscErrorCode calcCost(Vec x, Mat gen_cost, PetscScalar baseMVA, PetscInt COST, PetscInt nb, PetscScalar *fun, Vec *df);
+#include <petscmat.h>
+#include "util.h"
+
+PetscErrorCode calcCost(Vec x, Mat gen_cost, PetscScalar baseMVA, PetscInt nb, PetscScalar *fun, Vec *df);

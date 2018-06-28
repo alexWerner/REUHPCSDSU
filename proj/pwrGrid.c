@@ -1,12 +1,10 @@
-static char help[] = "Power grid simulation";
-
-#include <petscksp.h>
 #include <stdio.h>
 #include "admMat.h"
 #include "loadMat.h"
 #include "derF.h"
 #include "derS.h"
 #include "calcCost.h"
+#include "util.h"
 
 int main(int argc,char **argv)
 {
@@ -15,77 +13,30 @@ int main(int argc,char **argv)
 
   PetscErrorCode ierr;
 
+#ifdef PROFILING
   PetscLogStage stage1 = 1;
   PetscLogStage stage2 = 2;
   PetscLogStage stage3 = 3;
   PetscLogStage stage4 = 4;
   PetscLogStage stage5 = 5;
+#endif
 
 
+  ierr = PetscInitialize(&argc,&argv,(char*)0,NULL);CHKERRQ(ierr);
 
-  ierr = PetscInitialize(&argc,&argv,(char*)0,help);CHKERRQ(ierr);
-
-
+#ifdef PROFILING
   ierr = PetscLogStageRegister("First Derivative", &stage1);CHKERRQ(ierr);
   ierr = PetscLogStageRegister("Second Derivative", &stage2);CHKERRQ(ierr);
   ierr = PetscLogStageRegister("Solving System", &stage3);CHKERRQ(ierr);
   ierr = PetscLogStageRegister("Calculating Cost", &stage4);CHKERRQ(ierr);
   ierr = PetscLogStageRegister("Testing", &stage5);CHKERRQ(ierr);
+#endif
 
-  PetscInt read = -1;
-  ierr = PetscOptionsGetInt(NULL, NULL, "-readMats", &read, NULL);CHKERRQ(ierr);
+  char fileName[100];
+  ierr = PetscOptionsGetString(NULL, NULL, "-readFile", fileName, 100, NULL);CHKERRQ(ierr);
 
-  ierr = loadMatrices(&bus_data, &branch_data, &gen_data, &gen_cost, read);CHKERRQ(ierr);
-
-  //bus column indices
-              //PQ = 1,   //Bus Types
-              //PV = 2,   //
-              //REF = 3,  //
-              //NONE = 4, //
-              //BUS_I = 0,    //Bus Number
-  PetscScalar BUS_TYPE = 1, //Bus Type
-              PD = 2,       //Real Power Demand (MW)
-              QD = 3,       //Reactive Power Demand (MVar)
-              GS = 4,       //Shunt Conductance
-              BS = 5,       //Shunt Susceptance
-              VM = 6,       //Voltage Magnitude (p.u.)
-              VA = 7;       //Voltage Angle (degrees)
-              //BASE_KV = 8,  //Base Voltage (kV)
-              //VMAX = 9,    //Maximum Voltage Magnitude
-              //VMIN = 10;    //Minimum Voltage Magnitude
-
-  //branch column indices
-  PetscScalar F_BUS = 0,    //From Bus Number
-              T_BUS = 1,    //To Bus Number
-              BR_R = 2,     //Resistance
-              BR_X = 3,     //Reactance
-              BR_B = 4,     //Total Line Chargin Susceptance
-              RATE_A = 5;   //MVA Rating A (Long Term Rating)
-              //RATE_B = 6,   //MVA Rating B (Short Term Rating)
-              //RATE_C = 7,   //MVA Rating C (Emergency Rating)
-              //ANGMIN = 8,   //Minimum Angle Difference
-              //ANGMAX = 9;  //Maximum Angle Difference
-
-  //gen column indices
-  PetscScalar GEN_BUS = 0,    //bus number
-              //PG = 1,         //real power output
-              //QG = 2,         //reactive power output
-              QMAX = 3,       //maximum reactive power output at Pmin
-              QMIN = 4,       //minimum reactive power output at Pmin
-              //VG = 5,         //voltage magnitued setpoint
-              //MBASE = 6,      //total MVA base of this machine
-              //GEN_STATUS = 7, //1 - machine in service, 0 - machine out of service
-              PMAX = 8,       //maximum real power output
-              PMIN = 9;       //minimum real power output
-
-  //gen cost colmn indices
-              //PW_LINEAR = 1,
-              //POLYNOMIAL = 2,
-              //MODEL = 0,        //Cost model: 1 = piecewise linear, 2 = polynomial
-              //STARTUP = 1,      //Startup cost in US dollars
-              //SHUTDOWN = 2,     //Shutdown cost in US dollars
-              //NCOST = 3,        //number breakpoints in piewewise linear cost function, or number of coefficients in polynomial cost function
-  PetscScalar COST = 4;         //Parameters defining total cost function begin in this column
+  //ierr = loadMatrices(&bus_data, &branch_data, &gen_data, &gen_cost, read);CHKERRQ(ierr);
+  ierr = LoadMatrices(&bus_data, &branch_data, &gen_data, &gen_cost, fileName);CHKERRQ(ierr);
 
 
   PetscInt nb, nl;
@@ -94,55 +45,37 @@ int main(int argc,char **argv)
   Mat Cf, Ct, Yf, Yt, Ybus;
 
   //Calculate admittance matrix
-  ierr = makeAdmMat(bus_data, branch_data, GS, BS, F_BUS, T_BUS, BR_R,
-    BR_X, BR_B, baseMVA, nb, nl, &Cf, &Ct, &Yf, &Yt, &Ybus);CHKERRQ(ierr);
-
-
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nYbus\n====================\n");CHKERRQ(ierr);
-  ierr = MatView(Ybus, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  ierr = makeAdmMat(bus_data, branch_data, baseMVA, &Cf, &Ct, &Yf, &Yt, &Ybus);CHKERRQ(ierr);
 
 
   PetscInt ng;
   ierr = MatGetSize(gen_data, &ng, NULL);CHKERRQ(ierr);
 
-  Vec x, xmin, xmax, Pg, Qg, Vm, Va;
-  ierr = makeVector(&Pg, ng);CHKERRQ(ierr);
-  ierr = makeVector(&Qg, ng);CHKERRQ(ierr);
-  ierr = makeVector(&Vm, nb);CHKERRQ(ierr);
-  ierr = makeVector(&Va, nb);CHKERRQ(ierr);
+  Vec x, xmin, xmax;
 
 
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nCalculating Constraints\n====================\n");CHKERRQ(ierr);
-  ierr = setupConstraints(nb, bus_data, gen_data, BUS_TYPE, VA, VM, PMAX, PMIN,
-    QMAX, QMIN, &x, &xmin, &xmax, &Pg, &Qg, &Vm, &Va);CHKERRQ(ierr);
+  ierr = setupConstraints(nb, bus_data, gen_data, &x, &xmin, &xmax);CHKERRQ(ierr);
 
 
   IS il;
   PetscInt nl2;
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nLimited Lines\n====================\n");CHKERRQ(ierr);
-  ierr = getLimitedLines(branch_data, RATE_A, nl, &il, &nl2);CHKERRQ(ierr);
+  ierr = getLimitedLines(branch_data, &il, &nl2);CHKERRQ(ierr);
 
-
+#ifdef PROFILING
   ierr = PetscLogStagePush(stage1);CHKERRQ(ierr);
+#endif
   Vec h, g, gn, hn, Sf, St;
   Mat dh, dg, dSf_dVa, dSf_dVm, dSt_dVm, dSt_dVa;
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nFirst Derivative\n====================\n");CHKERRQ(ierr);
   calcFirstDerivative(x, Ybus, bus_data, gen_data, branch_data, il, Yf, Yt, nl2, nl,
-    baseMVA, xmax, xmin, GEN_BUS, PD, QD, F_BUS, T_BUS, RATE_A, &h, &g,
+    baseMVA, xmax, xmin, &h, &g,
     &dh, &dg, &gn, &hn, &dSf_dVa, &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
+#ifdef PROFILING
   ierr = PetscLogStagePop();CHKERRQ(ierr);
-
-  // ierr = PetscPrintf(PETSC_COMM_WORLD, "\nh\n====================\n");CHKERRQ(ierr);
-  // ierr = VecView(h, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-  //
-  // ierr = PetscPrintf(PETSC_COMM_WORLD, "\ng\n====================\n");CHKERRQ(ierr);
-  // ierr = VecView(g, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-  //
-  // ierr = PetscPrintf(PETSC_COMM_WORLD, "\ndh\n====================\n");CHKERRQ(ierr);
-  // ierr = MatView(dh, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-  //
-  // ierr = PetscPrintf(PETSC_COMM_WORLD, "\ndg\n====================\n");CHKERRQ(ierr);
-  // ierr = MatView(dg, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+#endif
 
 
   PetscInt neq, niq, neqnln, niqnln;
@@ -169,13 +102,13 @@ int main(int argc,char **argv)
 
   //lam = zeros(neq, 1);
   Vec lam;
-  ierr = makeVector(&lam, neq);CHKERRQ(ierr);
+  ierr = MakeVector(&lam, neq);CHKERRQ(ierr);
   ierr = VecSet(lam, 0);CHKERRQ(ierr);
 
 
   //z = z0 * ones(niq, q);
   Vec z;
-  ierr = makeVector(&z, niq);CHKERRQ(ierr);
+  ierr = MakeVector(&z, niq);CHKERRQ(ierr);
   ierr = VecSet(z, z0);CHKERRQ(ierr);
 
 
@@ -203,7 +136,7 @@ int main(int argc,char **argv)
 
   //e = ones(niq, 1);
   Vec e;
-  ierr = makeVector(&e, niq);CHKERRQ(ierr);
+  ierr = MakeVector(&e, niq);CHKERRQ(ierr);
   ierr = VecSet(e, 1);CHKERRQ(ierr);
 
 
@@ -246,15 +179,19 @@ int main(int argc,char **argv)
   ierr = MatAssemblyEnd(Cf, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(Ct, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
+#ifdef PROFILING
   ierr = PetscLogStagePush(stage4);CHKERRQ(ierr);
+#endif
   //[fun, df] = f_fcn1(x, gen_cost, baseMVA)
   PetscScalar fun;
   Vec df;
 
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nCalculating Cost\n====================\n");CHKERRQ(ierr);
-  ierr = calcCost(x, gen_cost, baseMVA, COST, nb, &fun, &df);CHKERRQ(ierr);
+  ierr = calcCost(x, gen_cost, baseMVA, nb, &fun, &df);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD, "Cost:%f\n", fun);
+#ifdef PROFILING
   ierr = PetscLogStagePop();CHKERRQ(ierr);
+#endif
 
 
 
@@ -293,7 +230,7 @@ int main(int argc,char **argv)
 
     //Lx = df + dg * lam + dh * mu;
     Vec Lx;
-    ierr = makeVector(&Lx, xSize);CHKERRQ(ierr);
+    ierr = MakeVector(&Lx, xSize);CHKERRQ(ierr);
     Vec dglam, dhmu;
     ierr = MatCreateVecs(dg, NULL, &dglam);CHKERRQ(ierr);
     ierr = MatCreateVecs(dh, NULL, &dhmu);CHKERRQ(ierr);
@@ -306,14 +243,17 @@ int main(int argc,char **argv)
     ierr = VecDestroy(&dglam);CHKERRQ(ierr);
     ierr = VecDestroy(&dhmu);CHKERRQ(ierr);
 
-
+#ifdef PROFILING
     ierr = PetscLogStagePush(stage2);CHKERRQ(ierr);
+#endif
     //Lxx = hess_fcn1(x,lam,mu,nb, Ybus,Yf,Yt,Cf,Ct,Sf,St,d2f,dSf_dVa,dSf_dVm,dSt_dVm,dSt_dVa);
     ierr = PetscPrintf(PETSC_COMM_WORLD, "\t[%d]Calculating Second Derivative\n\t====================\n", i);CHKERRQ(ierr);
-    calcSecondDerivative(x, lam, mu, nb, Ybus, Yf, Yt, Cf, Ct, Sf, St, d2f, dSf_dVa,
+    calcSecondDerivative(x, lam, mu, Ybus, Yf, Yt, Cf, Ct, Sf, St, d2f, dSf_dVa,
       dSf_dVm, dSt_dVm, dSt_dVa, il, Lxx);
+#ifdef PROFILING
     ierr = PetscLogStagePop();CHKERRQ(ierr);
-
+#endif
+	
 
     //M = Lxx + dh_zinv * mudiag * dh';
     Mat M;
@@ -329,7 +269,7 @@ int main(int argc,char **argv)
 
     //N = Lx + dh_zinv * (mudiag * h + gamma * e);
     Vec N;
-    ierr = makeVector(&N, xSize);CHKERRQ(ierr);
+    ierr = MakeVector(&N, xSize);CHKERRQ(ierr);
     ierr = VecCopy(Lx, N);CHKERRQ(ierr);
     Vec muh, gammae;
     ierr = MatCreateVecs(mudiag, NULL, &muh);CHKERRQ(ierr);
@@ -368,7 +308,7 @@ int main(int argc,char **argv)
     PetscInt *rowsArr = intArray2(min, max);
 
     PetscScalar *Marr;
-    ierr = PetscMalloc1(xSize * xSize, &Marr);CHKERRQ(ierr);
+    ierr = PetscMalloc1((max - min) * xSize, &Marr);CHKERRQ(ierr);
     PetscInt *mColArr = intArray2(0, xSize);
 
     ierr = MatGetValues(M, max - min, rowsArr, xSize, mColArr, Marr);CHKERRQ(ierr);
@@ -382,7 +322,7 @@ int main(int argc,char **argv)
     PetscInt *rowsArrDgT = intArray2(min + xSize, max + xSize);
 
     PetscScalar *dgTarr;
-    ierr = PetscMalloc1(xSize * neq, &dgTarr);CHKERRQ(ierr);
+    ierr = PetscMalloc1(xSize * (max - min), &dgTarr);CHKERRQ(ierr);
     PetscInt *dgTColArr = intArray2(0, xSize);
 
     ierr = MatGetValues(dgT, max - min, rowsArr, xSize, dgTColArr, dgTarr);CHKERRQ(ierr);
@@ -397,7 +337,7 @@ int main(int argc,char **argv)
     rowsArr = intArray2(min, max);
 
     PetscScalar *dgarr;
-    ierr = PetscMalloc1(xSize * neq, &dgarr);CHKERRQ(ierr);
+    ierr = PetscMalloc1((max - min) * neq, &dgarr);CHKERRQ(ierr);
     PetscInt *dgColArr = intArray2(0, neq);
     PetscInt *dgColArr2 = intArray2(xSize, xSize + neq);
 
@@ -432,12 +372,17 @@ int main(int argc,char **argv)
     ierr = VecDestroy(&negN);CHKERRQ(ierr);
     ierr = VecDestroy(&negG);CHKERRQ(ierr);
     ierr = VecDestroy(&N);CHKERRQ(ierr);
+	ierr = MatDestroy(&M);CHKERRQ(ierr);
+    ierr = VecDestroy(&Lx);CHKERRQ(ierr);
+	ierr = MatDestroy(&dh_zinv);CHKERRQ(ierr);
 
 
 
     Vec dxdlam;
     ierr = MatCreateVecs(W, &dxdlam, NULL);CHKERRQ(ierr);
+#ifdef PROFILING
     ierr = PetscLogStagePush(stage3);CHKERRQ(ierr);
+#endif
     //dxdlam = W \ B;
     ierr = PetscPrintf(PETSC_COMM_WORLD, "\t[%d]Solving System\n\t====================\n\t", i);CHKERRQ(ierr);
     KSP ksp;
@@ -455,7 +400,12 @@ int main(int argc,char **argv)
 
     ierr = KSPSolve(ksp, B, dxdlam);CHKERRQ(ierr);
     ierr = KSPDestroy(&ksp);CHKERRQ(ierr);
+#ifdef PROFILING
     ierr = PetscLogStagePop();CHKERRQ(ierr);
+#endif
+	
+	ierr = MatDestroy(&W);CHKERRQ(ierr);
+	ierr = VecDestroy(&B);CHKERRQ(ierr);
 
 
     //nx = size(x,1);
@@ -502,7 +452,9 @@ int main(int argc,char **argv)
     ierr = VecDuplicate(mu, &dmu);CHKERRQ(ierr);
     ierr = VecWAXPY(dmu, -1, mu, zinvgammamu);CHKERRQ(ierr);
     ierr = VecDestroy(&zinvgammamu);CHKERRQ(ierr);
-
+	ierr = MatDestroy(&zinvdiag);CHKERRQ(ierr);
+    ierr = MatDestroy(&mudiag);CHKERRQ(ierr);
+    ierr = VecDestroy(&gammae);CHKERRQ(ierr);
 
     //xi = 0.99995;
     PetscScalar xi = 0.99995;
@@ -606,6 +558,12 @@ int main(int argc,char **argv)
     ierr = VecAXPY(z, alphap, dz);CHKERRQ(ierr);
     ierr = VecAXPY(lam, alphad, dlam);CHKERRQ(ierr);
     ierr = VecAXPY(mu, alphad, dmu);CHKERRQ(ierr);
+	
+	ierr = VecDestroy(&dxdlam);CHKERRQ(ierr);
+    ierr = VecDestroy(&dx);CHKERRQ(ierr);
+    ierr = VecDestroy(&dz);CHKERRQ(ierr);
+    ierr = VecDestroy(&dlam);CHKERRQ(ierr);
+    ierr = VecDestroy(&dmu);CHKERRQ(ierr);
 
 
     //if niq > 0
@@ -619,15 +577,17 @@ int main(int argc,char **argv)
     }
     PetscPrintf(PETSC_COMM_WORLD, "\tgamma: %f\n", gamma);
 
-
+	
     //[f, df] = f_fcn1(x,gen_cost,baseMVA);
     ierr = PetscPrintf(PETSC_COMM_WORLD, "\t[%d]Calculating Cost\n\t====================\n", i);CHKERRQ(ierr);
     ierr = VecDestroy(&df);CHKERRQ(ierr);
-    ierr = calcCost(x, gen_cost, baseMVA, COST, nb, &fun, &df);CHKERRQ(ierr);
+    ierr = calcCost(x, gen_cost, baseMVA, nb, &fun, &df);CHKERRQ(ierr);
     ierr = PetscPrintf(PETSC_COMM_WORLD, "\tCost:%f\n", fun);
 
 
+#ifdef PROFILING
     ierr = PetscLogStagePush(stage1);CHKERRQ(ierr);
+#endif
     //[h, g, dh, dg,gn,hn,dSf_dVa,dSf_dVm,dSt_dVm,dSt_dVa,Sf,St] = gh_fcn1(x,Ybus,bus_data,gen_data,branch_data,il,Yf,Yt,baseMVA,xmax,xmin);
     ierr = PetscPrintf(PETSC_COMM_WORLD, "\t[%d]First Derivative\n\t====================\n\n", i);CHKERRQ(ierr);
     ierr = VecDestroy(&h);CHKERRQ(ierr);
@@ -643,30 +603,21 @@ int main(int argc,char **argv)
     ierr = MatDestroy(&dSt_dVa);CHKERRQ(ierr);
     ierr = MatDestroy(&dSt_dVm);CHKERRQ(ierr);
     calcFirstDerivative(x, Ybus, bus_data, gen_data, branch_data, il, Yf, Yt, nl2, nl,
-      baseMVA, xmax, xmin, GEN_BUS, PD, QD, F_BUS, T_BUS, RATE_A, &h, &g,
+      baseMVA, xmax, xmin, &h, &g,
       &dh, &dg, &gn, &hn, &dSf_dVa, &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
+#ifdef PROFILING
     ierr = PetscLogStagePop();CHKERRQ(ierr);
+#endif
 
-
-      //Cleanup
-    ierr = MatDestroy(&zinvdiag);CHKERRQ(ierr);
-    ierr = MatDestroy(&mudiag);CHKERRQ(ierr);
-    ierr = MatDestroy(&dh_zinv);CHKERRQ(ierr);
-    ierr = MatDestroy(&M);CHKERRQ(ierr);
-    ierr = MatDestroy(&W);CHKERRQ(ierr);
-    ierr = VecDestroy(&Lx);CHKERRQ(ierr);
-    ierr = VecDestroy(&B);CHKERRQ(ierr);
-    ierr = VecDestroy(&dxdlam);CHKERRQ(ierr);
-    ierr = VecDestroy(&dx);CHKERRQ(ierr);
-    ierr = VecDestroy(&dz);CHKERRQ(ierr);
-    ierr = VecDestroy(&dlam);CHKERRQ(ierr);
-    ierr = VecDestroy(&dmu);CHKERRQ(ierr);
-    ierr = VecDestroy(&gammae);CHKERRQ(ierr);
   }
 
 
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nDone With Main Loop\n====================\n");CHKERRQ(ierr);
-  VecView(x, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+  
+  Vec xOut;
+  ierr = getVecIndices(x, nb * 2, nb * 2 + ng, &xOut);CHKERRQ(ierr);
+  
+  VecView(xOut, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
 
 
@@ -676,6 +627,7 @@ int main(int argc,char **argv)
   ierr = VecDestroy(&hn);CHKERRQ(ierr);
   ierr = VecDestroy(&Sf);CHKERRQ(ierr);
   ierr = VecDestroy(&St);CHKERRQ(ierr);
+  ierr = VecDestroy(&xOut);CHKERRQ(ierr);
   ierr = MatDestroy(&dh);CHKERRQ(ierr);
   ierr = MatDestroy(&dg);CHKERRQ(ierr);
   ierr = MatDestroy(&d2f);CHKERRQ(ierr);
@@ -699,10 +651,6 @@ int main(int argc,char **argv)
   ierr = VecDestroy(&x);CHKERRQ(ierr);
   ierr = VecDestroy(&xmin);CHKERRQ(ierr);
   ierr = VecDestroy(&xmax);CHKERRQ(ierr);
-  ierr = VecDestroy(&Pg);CHKERRQ(ierr);
-  ierr = VecDestroy(&Qg);CHKERRQ(ierr);
-  ierr = VecDestroy(&Va);CHKERRQ(ierr);
-  ierr = VecDestroy(&Vm);CHKERRQ(ierr);
   ierr = VecDestroy(&Sf);CHKERRQ(ierr);
   ierr = VecDestroy(&St);CHKERRQ(ierr);
   ierr = VecDestroy(&lam);CHKERRQ(ierr);

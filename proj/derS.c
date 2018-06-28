@@ -1,11 +1,16 @@
 #include "derS.h"
 
-PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, PetscInt nb, Mat Ybus,
+PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, Mat Ybus,
   Mat Yf, Mat Yt, Mat Cf, Mat Ct, Vec Sf, Vec St, Mat d2f, Mat dSf_dVa,
   Mat dSf_dVm, Mat dSt_dVm, Mat dSt_dVa, IS il, Mat y)
 {
   PetscErrorCode ierr;
-
+  PetscFunctionBegin;
+  
+  PetscInt nb;
+  ierr = MatGetSize(Ybus, &nb, NULL);CHKERRQ(ierr);
+  
+  
   //Vm = x(6:10, :);
   //Va = x(1:5, :);
   //V = Vm .* exp(1j * Va);
@@ -18,7 +23,7 @@ PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, PetscInt nb, Mat Ybu
   ierr = getSubVector(x, VmIs, &Vm);CHKERRQ(ierr);
 
   Vec V, VaWork, VmWork;
-  ierr = makeVector(&V, nb);CHKERRQ(ierr);
+  ierr = MakeVector(&V, nb);CHKERRQ(ierr);
   ierr = restructureVec(Va, &VaWork);CHKERRQ(ierr);
   ierr = restructureVec(Vm, &VmWork);CHKERRQ(ierr);
 
@@ -91,7 +96,7 @@ PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, PetscInt nb, Mat Ybu
   PetscInt *rowsArr = intArray2(min, max);
 
   PetscScalar *arr;
-  ierr = PetscMalloc1(nb * 2 * nb * 2, &arr);CHKERRQ(ierr);
+  ierr = PetscMalloc1((max - min) * nb * 2, &arr);CHKERRQ(ierr);
   PetscInt *nbArr = intArray2(0, nb * 2);
 
   ierr = MatGetValues(Gp, max - min, rowsArr, nb * 2, nbArr, arr);CHKERRQ(ierr);
@@ -167,7 +172,7 @@ PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, PetscInt nb, Mat Ybu
   ierr = MatGetOwnershipRange(Hf, &min, &max);CHKERRQ(ierr);
   rowsArr = intArray2(min, max);
 
-  ierr = PetscMalloc1(nb * 2 * nb * 2, &arr);CHKERRQ(ierr);
+  ierr = PetscMalloc1((max - min) * nb * 2, &arr);CHKERRQ(ierr);
   nbArr = intArray2(0, nb * 2);
 
   ierr = MatGetValues(Hf, max - min, rowsArr, nb * 2, nbArr, arr);CHKERRQ(ierr);
@@ -372,7 +377,7 @@ PetscErrorCode combine4Matrices(Mat out, Mat *in, PetscInt nb)
       PetscInt *rowsArr2 = intArray2(min + nb * i, max + nb * i);
 
       PetscScalar *arr;
-      ierr = PetscMalloc1(nb * nb, &arr);CHKERRQ(ierr);
+      ierr = PetscMalloc1((max - min) * nb, &arr);CHKERRQ(ierr);
       PetscInt *nbArr = intArray2(0, nb);
       PetscInt *nbArr2 = intArray2(nb * j, nb * (j + 1));
 
@@ -577,7 +582,7 @@ PetscErrorCode restructureMat(Mat a, Mat *b)
   PetscInt *rowsArr = intArray2(min, max);
 
   PetscScalar *arr;
-  ierr = PetscMalloc1(r * c, &arr);CHKERRQ(ierr);
+  ierr = PetscMalloc1((max - min) * c, &arr);CHKERRQ(ierr);
   PetscInt *nbArr = intArray2(0, c);
 
   ierr = MatGetValues(a, max - min, rowsArr, c, nbArr, arr);CHKERRQ(ierr);
