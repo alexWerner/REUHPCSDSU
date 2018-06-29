@@ -22,7 +22,7 @@ int main(int argc,char **argv)
 #endif
 
 
-  ierr = PetscInitialize(&argc,&argv,(char*)0,NULL);CHKERRQ(ierr);
+  ierr = PetscInitialize(&argc,&argv,"pwrGridOptions",NULL);CHKERRQ(ierr);
 
 #ifdef PROFILING
   ierr = PetscLogStageRegister("First Derivative", &stage1);CHKERRQ(ierr);
@@ -84,13 +84,6 @@ int main(int argc,char **argv)
   ierr = VecGetSize(gn, &neqnln);CHKERRQ(ierr);
   ierr = VecGetSize(hn, &niqnln);CHKERRQ(ierr);
   PetscInt xSize = 2 * nb + 2 * ng;
-
-  //d2f = sparse(1:20, 1:20, 0);
-  Mat d2f;
-  ierr = makeSparse(&d2f, xSize, xSize, 0, 0);CHKERRQ(ierr);
-
-  ierr = MatAssemblyBegin(d2f, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(d2f, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
 
   //z0 = 1;
@@ -185,15 +178,14 @@ int main(int argc,char **argv)
   //[fun, df] = f_fcn1(x, gen_cost, baseMVA)
   PetscScalar fun;
   Vec df;
+  Mat d2f;
 
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nCalculating Cost\n====================\n");CHKERRQ(ierr);
-  ierr = calcCost(x, gen_cost, baseMVA, nb, &fun, &df);CHKERRQ(ierr);
+  ierr = calcCost(x, gen_cost, baseMVA, nb, &fun, &df, &d2f);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD, "Cost:%f\n", fun);
 #ifdef PROFILING
   ierr = PetscLogStagePop();CHKERRQ(ierr);
 #endif
-
-
 
 
   Mat Lxx;
@@ -393,7 +385,6 @@ int main(int argc,char **argv)
 
     ierr = KSPGetPC(ksp, &pc);CHKERRQ(ierr);
     ierr = PCSetType(pc, PCASM);CHKERRQ(ierr);
-    ierr = PetscOptionsSetValue(NULL, "-ksp_max_it", "1000");CHKERRQ(ierr);
 
     ierr = KSPSetFromOptions(ksp);CHKERRQ(ierr);
     ierr = KSPSetUp(ksp);CHKERRQ(ierr);
@@ -404,9 +395,18 @@ int main(int argc,char **argv)
     ierr = PetscLogStagePop();CHKERRQ(ierr);
 #endif
 	
-	ierr = MatDestroy(&W);CHKERRQ(ierr);
-	ierr = VecDestroy(&B);CHKERRQ(ierr);
-
+	//PetscViewer matOut, vecOut;
+	//PetscViewerBinaryOpen(PETSC_COMM_WORLD, "mat", FILE_MODE_WRITE, &matOut);
+	//PetscViewerBinaryOpen(PETSC_COMM_WORLD, "vec", FILE_MODE_WRITE, &vecOut);
+	//MatView(W, matOut);
+	//VecView(B, vecOut);
+	//VecView(dxdlam, PETSC_VIEWER_STDOUT_WORLD);
+	
+	//ierr = MatDestroy(&W);CHKERRQ(ierr);
+	//ierr = VecDestroy(&B);CHKERRQ(ierr);
+	
+	//PetscViewerDestroy(&matOut);
+	//PetscViewerDestroy(&vecOut);
 
     //nx = size(x,1);
     //This line is not needed, stored in xSize
@@ -581,9 +581,10 @@ int main(int argc,char **argv)
     //[f, df] = f_fcn1(x,gen_cost,baseMVA);
     ierr = PetscPrintf(PETSC_COMM_WORLD, "\t[%d]Calculating Cost\n\t====================\n", i);CHKERRQ(ierr);
     ierr = VecDestroy(&df);CHKERRQ(ierr);
-    ierr = calcCost(x, gen_cost, baseMVA, nb, &fun, &df);CHKERRQ(ierr);
+	ierr = MatDestroy(&d2f);CHKERRQ(ierr);
+    ierr = calcCost(x, gen_cost, baseMVA, nb, &fun, &df, &d2f);CHKERRQ(ierr);
     ierr = PetscPrintf(PETSC_COMM_WORLD, "\tCost:%f\n", fun);
-
+	
 
 #ifdef PROFILING
     ierr = PetscLogStagePush(stage1);CHKERRQ(ierr);
@@ -602,9 +603,9 @@ int main(int argc,char **argv)
     ierr = MatDestroy(&dSf_dVm);CHKERRQ(ierr);
     ierr = MatDestroy(&dSt_dVa);CHKERRQ(ierr);
     ierr = MatDestroy(&dSt_dVm);CHKERRQ(ierr);
-    calcFirstDerivative(x, Ybus, bus_data, gen_data, branch_data, il, Yf, Yt, nl2, nl,
-      baseMVA, xmax, xmin, &h, &g,
-      &dh, &dg, &gn, &hn, &dSf_dVa, &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
+    calcFirstDerivative(x, Ybus, bus_data, gen_data, branch_data, il, Yf, Yt, 
+	  nl2, nl, baseMVA, xmax, xmin, &h, &g, &dh, &dg, &gn, &hn, &dSf_dVa, 
+	  &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
 #ifdef PROFILING
     ierr = PetscLogStagePop();CHKERRQ(ierr);
 #endif
