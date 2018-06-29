@@ -256,6 +256,26 @@ PetscViewerDestroy(&matOut);
 #endif
 
 
+PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/Lx", FILE_MODE_WRITE, &matOut);
+VecView(Lx, matOut);
+PetscViewerDestroy(&matOut);
+
+PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/df", FILE_MODE_WRITE, &matOut);
+VecView(df, matOut);
+PetscViewerDestroy(&matOut);
+
+PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/dg", FILE_MODE_WRITE, &matOut);
+MatView(dg, matOut);
+PetscViewerDestroy(&matOut);
+
+PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/dh", FILE_MODE_WRITE, &matOut);
+MatView(dh, matOut);
+PetscViewerDestroy(&matOut);
+
+
+
+
+
 PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/Lxx", FILE_MODE_WRITE, &matOut);
 MatView(Lxx, matOut);
 PetscViewerDestroy(&matOut);
@@ -419,7 +439,9 @@ PetscViewerDestroy(&matOut);
 
 
 
-
+PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/B", FILE_MODE_WRITE, &matOut);
+VecView(B, matOut);
+PetscViewerDestroy(&matOut);
 	// PetscViewer matOut, vecOut;
 	// PetscViewerBinaryOpen(PETSC_COMM_WORLD, "mat", FILE_MODE_WRITE, &matOut);
 	// PetscViewerBinaryOpen(PETSC_COMM_WORLD, "vec", FILE_MODE_WRITE, &vecOut);
