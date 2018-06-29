@@ -6,11 +6,11 @@ PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, Mat Ybus,
 {
   PetscErrorCode ierr;
   PetscFunctionBegin;
-  
+
   PetscInt nb;
   ierr = MatGetSize(Ybus, &nb, NULL);CHKERRQ(ierr);
-  
-  
+
+
   //Vm = x(6:10, :);
   //Va = x(1:5, :);
   //V = Vm .* exp(1j * Va);
@@ -201,6 +201,14 @@ PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, Mat Ybus,
   ierr = MatAXPY(y, 1, d2f, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
 
 
+  PetscViewer matOut;
+  PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/d2G", FILE_MODE_WRITE, &matOut);
+  MatView(d2G, matOut);
+  PetscViewerDestroy(&matOut);
+
+  PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/d2H", FILE_MODE_WRITE, &matOut);
+  MatView(d2H, matOut);
+  PetscViewerDestroy(&matOut);
 
 
 
@@ -483,6 +491,7 @@ PetscErrorCode d2ASbr_dV2(Mat dSbr_dVa, Mat dSbr_dVm, Vec Sbr, Mat Cbr, Mat Ybr,
   Vec ATconjV;
   ierr = MatCreateVecs(AT, NULL, &ATconjV);CHKERRQ(ierr);
   ierr = MatMult(AT, conjV, ATconjV);CHKERRQ(ierr);
+  ierr = VecAbs(ATconjV);CHKERRQ(ierr);
 
   ierr = makeDiagonalMat(&E, ATconjV, nb);CHKERRQ(ierr);
   ierr = VecDestroy(&ATconjV);CHKERRQ(ierr);
@@ -545,6 +554,20 @@ PetscErrorCode d2ASbr_dV2(Mat dSbr_dVa, Mat dSbr_dVm, Vec Sbr, Mat Cbr, Mat Ybr,
   ierr = calcHMat(Sva, dSbr_dVm, diaglam, dSbr_dVa, Hva);
   ierr = calcHMat(Sav, dSbr_dVa, diaglam, dSbr_dVm, Hav);
   ierr = calcHMat(Svv, dSbr_dVm, diaglam, dSbr_dVm, Hvv);
+
+
+  PetscViewer matOut;
+  PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/B", FILE_MODE_WRITE, &matOut);
+  MatView(B, matOut);
+  PetscViewerDestroy(&matOut);
+
+  PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/D", FILE_MODE_WRITE, &matOut);
+  MatView(D, matOut);
+  PetscViewerDestroy(&matOut);
+
+  PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/E", FILE_MODE_WRITE, &matOut);
+  MatView(E, matOut);
+  PetscViewerDestroy(&matOut);
 
 
   ierr = MatDestroy(&diaglam);CHKERRQ(ierr);

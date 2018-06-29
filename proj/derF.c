@@ -132,7 +132,7 @@ PetscErrorCode getLimitedLines(Mat branch_data, IS *il, PetscInt *nl2)
 {
   PetscErrorCode ierr;
   PetscFunctionBegin;
-  
+
   PetscInt nl;
   ierr = MatGetSize(branch_data, &nl, NULL);CHKERRQ(ierr);
 
@@ -483,7 +483,6 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
 
 
   //neg_Cg = sparse(gen_data(:, GEN_BUS), 1:ng, -1, nb, ng);
-  //This says the matrix is nb X ng, but it makes more sense to be ng X ng in general
   Mat neg_Cg;
   ierr = makeSparse(&neg_Cg, nb, ng, ng, ng);CHKERRQ(ierr);//Come back to this and change it later
 
@@ -538,8 +537,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   PetscInt *nbArr = intArray(nb);
   PetscInt *nbArr2 = intArray2(nb, nb * 2);
   PetscInt *ngArr = intArray(ng);
-  PetscInt *ngArr3 = intArray2(ng * 2, ng * 3);
-  PetscInt *ngArr4 = intArray2(ng * 3, ng * 4);
+  PetscInt *ngArr3 = intArray2(nb * 2, nb * 2 + ng);
+  PetscInt *ngArr4 = intArray2(nb * 2 + ng, nb * 2 + ng * 2);
   PetscInt *rowsArr = intArray2(min, max);
   PetscInt *rowsArr2 = intArray2(min + nb, max + nb);
   ierr = MatGetValues(realVa, max - min, rowsArr, nb, nbArr, realVaArr);CHKERRQ(ierr);
@@ -1049,7 +1048,7 @@ PetscErrorCode makeDiagonalMatRI(Mat *m, Vec vals, PetscInt dim, char r, PetscSc
 {
   PetscErrorCode ierr;
   PetscFunctionBegin;
-  
+
   ierr = makeSparse(m, dim, dim, 1, 0);CHKERRQ(ierr);
 
   PetscScalar const *mArr;

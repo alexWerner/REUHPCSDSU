@@ -12,6 +12,7 @@ int main(int argc,char **argv)
   PetscScalar baseMVA = 100;
 
   PetscErrorCode ierr;
+  PetscViewer matOut;
 
 #ifdef PROFILING
   PetscLogStage stage1 = 1;
@@ -47,6 +48,10 @@ int main(int argc,char **argv)
   //Calculate admittance matrix
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nYbus\n====================\n");CHKERRQ(ierr);
   ierr = makeAdmMat(bus_data, branch_data, baseMVA, &Cf, &Ct, &Yf, &Yt, &Ybus);CHKERRQ(ierr);
+
+  PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/Ybus", FILE_MODE_WRITE, &matOut);
+  MatView(Ybus, matOut);
+  PetscViewerDestroy(&matOut);
 
 
   PetscInt ng;
@@ -187,6 +192,10 @@ int main(int argc,char **argv)
   ierr = PetscLogStagePop();CHKERRQ(ierr);
 #endif
 
+PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/d2f", FILE_MODE_WRITE, &matOut);
+MatView(d2f, matOut);
+PetscViewerDestroy(&matOut);
+
 
   Mat Lxx;
   ierr = makeSparse(&Lxx, xSize, xSize, 0, 0);CHKERRQ(ierr);
@@ -245,7 +254,11 @@ int main(int argc,char **argv)
 #ifdef PROFILING
     ierr = PetscLogStagePop();CHKERRQ(ierr);
 #endif
-	
+
+
+PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/Lxx", FILE_MODE_WRITE, &matOut);
+MatView(Lxx, matOut);
+PetscViewerDestroy(&matOut);
 
     //M = Lxx + dh_zinv * mudiag * dh';
     Mat M;
@@ -257,7 +270,7 @@ int main(int argc,char **argv)
     ierr = MatAXPY(M, 1, zmudhT, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
     ierr = MatDestroy(&dhT);CHKERRQ(ierr);
     ierr = MatDestroy(&zmudhT);CHKERRQ(ierr);
-
+//MatView(Lxx, PETSC_VIEWER_STDOUT_WORLD);
 
     //N = Lx + dh_zinv * (mudiag * h + gamma * e);
     Vec N;
@@ -344,6 +357,15 @@ int main(int argc,char **argv)
     ierr = MatAssemblyEnd(W, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
 
+    PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/W", FILE_MODE_WRITE, &matOut);
+    MatView(W, matOut);
+    PetscViewerDestroy(&matOut);
+
+    PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/dg", FILE_MODE_WRITE, &matOut);
+    MatView(dg, matOut);
+    PetscViewerDestroy(&matOut);
+
+// MatView(dg, PETSC_VIEWER_STDOUT_WORLD);
     //B = [-N; -g];
     Vec negN, negG;
     ierr = VecDuplicate(N, &negN);CHKERRQ(ierr);
@@ -364,9 +386,9 @@ int main(int argc,char **argv)
     ierr = VecDestroy(&negN);CHKERRQ(ierr);
     ierr = VecDestroy(&negG);CHKERRQ(ierr);
     ierr = VecDestroy(&N);CHKERRQ(ierr);
-	ierr = MatDestroy(&M);CHKERRQ(ierr);
+	  ierr = MatDestroy(&M);CHKERRQ(ierr);
     ierr = VecDestroy(&Lx);CHKERRQ(ierr);
-	ierr = MatDestroy(&dh_zinv);CHKERRQ(ierr);
+	  ierr = MatDestroy(&dh_zinv);CHKERRQ(ierr);
 
 
 
@@ -394,19 +416,22 @@ int main(int argc,char **argv)
 #ifdef PROFILING
     ierr = PetscLogStagePop();CHKERRQ(ierr);
 #endif
-	
-	//PetscViewer matOut, vecOut;
-	//PetscViewerBinaryOpen(PETSC_COMM_WORLD, "mat", FILE_MODE_WRITE, &matOut);
-	//PetscViewerBinaryOpen(PETSC_COMM_WORLD, "vec", FILE_MODE_WRITE, &vecOut);
-	//MatView(W, matOut);
-	//VecView(B, vecOut);
-	//VecView(dxdlam, PETSC_VIEWER_STDOUT_WORLD);
-	
-	//ierr = MatDestroy(&W);CHKERRQ(ierr);
-	//ierr = VecDestroy(&B);CHKERRQ(ierr);
-	
-	//PetscViewerDestroy(&matOut);
-	//PetscViewerDestroy(&vecOut);
+
+
+
+
+	// PetscViewer matOut, vecOut;
+	// PetscViewerBinaryOpen(PETSC_COMM_WORLD, "mat", FILE_MODE_WRITE, &matOut);
+	// PetscViewerBinaryOpen(PETSC_COMM_WORLD, "vec", FILE_MODE_WRITE, &vecOut);
+	// MatView(Lxx, matOut);
+	// VecView(B, vecOut);
+	// //VecView(dxdlam, PETSC_VIEWER_STDOUT_WORLD);
+  //
+	// ierr = MatDestroy(&W);CHKERRQ(ierr);
+	// ierr = VecDestroy(&B);CHKERRQ(ierr);
+  //
+	// PetscViewerDestroy(&matOut);
+	// PetscViewerDestroy(&vecOut);
 
     //nx = size(x,1);
     //This line is not needed, stored in xSize
@@ -558,7 +583,7 @@ int main(int argc,char **argv)
     ierr = VecAXPY(z, alphap, dz);CHKERRQ(ierr);
     ierr = VecAXPY(lam, alphad, dlam);CHKERRQ(ierr);
     ierr = VecAXPY(mu, alphad, dmu);CHKERRQ(ierr);
-	
+
 	ierr = VecDestroy(&dxdlam);CHKERRQ(ierr);
     ierr = VecDestroy(&dx);CHKERRQ(ierr);
     ierr = VecDestroy(&dz);CHKERRQ(ierr);
@@ -577,14 +602,14 @@ int main(int argc,char **argv)
     }
     PetscPrintf(PETSC_COMM_WORLD, "\tgamma: %f\n", gamma);
 
-	
+
     //[f, df] = f_fcn1(x,gen_cost,baseMVA);
     ierr = PetscPrintf(PETSC_COMM_WORLD, "\t[%d]Calculating Cost\n\t====================\n", i);CHKERRQ(ierr);
     ierr = VecDestroy(&df);CHKERRQ(ierr);
 	ierr = MatDestroy(&d2f);CHKERRQ(ierr);
     ierr = calcCost(x, gen_cost, baseMVA, nb, &fun, &df, &d2f);CHKERRQ(ierr);
     ierr = PetscPrintf(PETSC_COMM_WORLD, "\tCost:%f\n", fun);
-	
+
 
 #ifdef PROFILING
     ierr = PetscLogStagePush(stage1);CHKERRQ(ierr);
@@ -603,8 +628,8 @@ int main(int argc,char **argv)
     ierr = MatDestroy(&dSf_dVm);CHKERRQ(ierr);
     ierr = MatDestroy(&dSt_dVa);CHKERRQ(ierr);
     ierr = MatDestroy(&dSt_dVm);CHKERRQ(ierr);
-    calcFirstDerivative(x, Ybus, bus_data, gen_data, branch_data, il, Yf, Yt, 
-	  nl2, nl, baseMVA, xmax, xmin, &h, &g, &dh, &dg, &gn, &hn, &dSf_dVa, 
+    calcFirstDerivative(x, Ybus, bus_data, gen_data, branch_data, il, Yf, Yt,
+	  nl2, nl, baseMVA, xmax, xmin, &h, &g, &dh, &dg, &gn, &hn, &dSf_dVa,
 	  &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
 #ifdef PROFILING
     ierr = PetscLogStagePop();CHKERRQ(ierr);
@@ -614,10 +639,10 @@ int main(int argc,char **argv)
 
 
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nDone With Main Loop\n====================\n");CHKERRQ(ierr);
-  
+
   Vec xOut;
   ierr = getVecIndices(x, nb * 2, nb * 2 + ng, &xOut);CHKERRQ(ierr);
-  
+
   VecView(xOut, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
 
 
