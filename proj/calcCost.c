@@ -50,8 +50,9 @@ PetscErrorCode calcCost(Vec x, Mat gen_cost, PetscScalar baseMVA, PetscInt nb, P
 
     Vec xSub;
     ierr = getVecIndices(x, nb * 2, nb * 2 + ng, &xSub);CHKERRQ(ierr);
-	ierr = VecPow(xSub, n - i - 2);CHKERRQ(ierr);
-	ierr = VecScale(xSub, (n - i - 1));CHKERRQ(ierr);
+    ierr = VecScale(xSub, baseMVA);CHKERRQ(ierr);
+    ierr = VecPow(xSub, n - i - 2);CHKERRQ(ierr);
+	  ierr = VecScale(xSub, (n - i - 1));CHKERRQ(ierr);
     ierr = VecPointwiseMult(xSub, xSub, cost[i]);CHKERRQ(ierr);
     ierr = VecAXPY(dfCost, 1, xSub);CHKERRQ(ierr);
     ierr = VecDestroy(&xSub);CHKERRQ(ierr);
@@ -78,8 +79,6 @@ PetscErrorCode calcCost(Vec x, Mat gen_cost, PetscScalar baseMVA, PetscInt nb, P
   ierr = VecDestroy(&dfCost);CHKERRQ(ierr);
 
 
-
-
   //Second derivative
   Vec d2fCost;
   ierr = MakeVector(&d2fCost, ng);CHKERRQ(ierr);
@@ -90,6 +89,7 @@ PetscErrorCode calcCost(Vec x, Mat gen_cost, PetscScalar baseMVA, PetscInt nb, P
 
     Vec xSub;
     ierr = getVecIndices(x, nb * 2, nb * 2 + ng, &xSub);CHKERRQ(ierr);
+    ierr = VecScale(xSub, baseMVA);CHKERRQ(ierr);
 	  ierr = VecPow(xSub, n - i - 3);CHKERRQ(ierr);
 	  ierr = VecScale(xSub, (n - i - 1) * (n - i - 2));CHKERRQ(ierr);
     ierr = VecPointwiseMult(xSub, xSub, cost[i]);CHKERRQ(ierr);

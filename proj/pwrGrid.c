@@ -49,11 +49,6 @@ int main(int argc,char **argv)
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nYbus\n====================\n");CHKERRQ(ierr);
   ierr = makeAdmMat(bus_data, branch_data, baseMVA, &Cf, &Ct, &Yf, &Yt, &Ybus);CHKERRQ(ierr);
 
-  PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/Ybus", FILE_MODE_WRITE, &matOut);
-  MatView(Ybus, matOut);
-  PetscViewerDestroy(&matOut);
-
-
   PetscInt ng;
   ierr = MatGetSize(gen_data, &ng, NULL);CHKERRQ(ierr);
 
@@ -256,30 +251,6 @@ PetscViewerDestroy(&matOut);
 #endif
 
 
-PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/Lx", FILE_MODE_WRITE, &matOut);
-VecView(Lx, matOut);
-PetscViewerDestroy(&matOut);
-
-PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/df", FILE_MODE_WRITE, &matOut);
-VecView(df, matOut);
-PetscViewerDestroy(&matOut);
-
-PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/dg", FILE_MODE_WRITE, &matOut);
-MatView(dg, matOut);
-PetscViewerDestroy(&matOut);
-
-PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/dh", FILE_MODE_WRITE, &matOut);
-MatView(dh, matOut);
-PetscViewerDestroy(&matOut);
-
-
-
-
-
-PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/Lxx", FILE_MODE_WRITE, &matOut);
-MatView(Lxx, matOut);
-PetscViewerDestroy(&matOut);
-
     //M = Lxx + dh_zinv * mudiag * dh';
     Mat M;
     ierr = MatDuplicate(Lxx, MAT_COPY_VALUES, &M);CHKERRQ(ierr);
@@ -377,13 +348,6 @@ PetscViewerDestroy(&matOut);
     ierr = MatAssemblyEnd(W, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
 
-    PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/W", FILE_MODE_WRITE, &matOut);
-    MatView(W, matOut);
-    PetscViewerDestroy(&matOut);
-
-    PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/dg", FILE_MODE_WRITE, &matOut);
-    MatView(dg, matOut);
-    PetscViewerDestroy(&matOut);
 
 // MatView(dg, PETSC_VIEWER_STDOUT_WORLD);
     //B = [-N; -g];
@@ -438,10 +402,6 @@ PetscViewerDestroy(&matOut);
 #endif
 
 
-
-PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/B", FILE_MODE_WRITE, &matOut);
-VecView(B, matOut);
-PetscViewerDestroy(&matOut);
 	// PetscViewer matOut, vecOut;
 	// PetscViewerBinaryOpen(PETSC_COMM_WORLD, "mat", FILE_MODE_WRITE, &matOut);
 	// PetscViewerBinaryOpen(PETSC_COMM_WORLD, "vec", FILE_MODE_WRITE, &vecOut);
