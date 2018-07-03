@@ -96,6 +96,7 @@ struct _p_GEN{
   PetscScalar 	f1; /* Fraction of ownership */
   PetscScalar   scale_gen;
   PetscInt	internal_i; /* Internal Bus Number */
+  PetscInt idx; /*index of generator*/
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
 typedef struct _p_GEN *GEN;

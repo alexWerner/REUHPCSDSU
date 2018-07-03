@@ -117,6 +117,7 @@ PetscErrorCode PFReadMatPowerData(PFDATA *pf,char *filename)
       Gen[geni].bus_i = bus_i; Gen[geni].status = status;
       Gen[geni].pg = pg; Gen[geni].qg = qg; Gen[geni].qt = qt; Gen[geni].qb = qb;
       Gen[geni].vs = vs; Gen[geni].mbase = mbase; Gen[geni].pt = pt; Gen[geni].pb = pb;
+      Gen[geni].idx = geni;
 
       intbusnum = busext2intmap[Gen[geni].bus_i];
       Gen[geni].internal_i = intbusnum;

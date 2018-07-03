@@ -2,7 +2,7 @@
 
 #include "util.h"
 
-PetscErrorCode setupConstraints(PetscInt nb, Mat bus_data, Mat gen_data, Vec *x, Vec *xmin, Vec *xmax);
+PetscErrorCode setupConstraints(DM net, PetscInt nb, PetscInt ng, Vec *x, Vec *xmin, Vec *xmax);
 
 PetscErrorCode getLimitedLines(Mat branch_data, IS *il, PetscInt *nl2);
 

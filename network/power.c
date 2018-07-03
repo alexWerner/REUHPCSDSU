@@ -4,7 +4,7 @@
 PetscErrorCode CreateNetwork(DM *networkdm, PetscInt *nb, PetscInt *ng, PetscInt *nl)
 {
   PetscErrorCode   ierr;
-  char             pfdata_file[PETSC_MAX_PATH_LEN]="mats/case9.m";
+  char             pfdata_file[PETSC_MAX_PATH_LEN]="mats/case5.m";
   PFDATA           *pfdata;
   PetscInt         numEdges=0,numVertices=0,NumEdges=PETSC_DETERMINE,NumVertices=PETSC_DETERMINE;
   PetscInt         *edges = NULL;

@@ -46,23 +46,17 @@ int main(int argc,char **argv)
   ierr = LoadMatrices(&bus_data, &branch_data, &gen_data, &gen_cost, fileName);CHKERRQ(ierr);
 
 
-  ierr = MatGetSize(bus_data, &nb, NULL);CHKERRQ(ierr);
-  ierr = MatGetSize(branch_data, &nl, NULL);CHKERRQ(ierr);
   Mat Cf, Ct, Yf, Yt, Ybus;
 
   //Calculate admittance matrix
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nYbus\n====================\n");CHKERRQ(ierr);
   ierr = makeAdmMat(dmnet, baseMVA, nb, nl, &Yf, &Yt, &Ybus);CHKERRQ(ierr);
 
-  MatView(Ybus, PETSC_VIEWER_STDOUT_WORLD);
-ierr = DMDestroy(&dmnet);CHKERRQ(ierr);
-  ierr = MatGetSize(gen_data, &ng, NULL);CHKERRQ(ierr);
-
   Vec x, xmin, xmax;
 
 
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nCalculating Constraints\n====================\n");CHKERRQ(ierr);
-  ierr = setupConstraints(nb, bus_data, gen_data, &x, &xmin, &xmax);CHKERRQ(ierr);
+  ierr = setupConstraints(dmnet, nb, ng, &x, &xmin, &xmax);CHKERRQ(ierr);
 
 
   IS il;
@@ -77,8 +71,7 @@ ierr = DMDestroy(&dmnet);CHKERRQ(ierr);
   Mat dh, dg, dSf_dVa, dSf_dVm, dSt_dVm, dSt_dVa;
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nFirst Derivative\n====================\n");CHKERRQ(ierr);
   calcFirstDerivative(x, Ybus, bus_data, gen_data, branch_data, il, Yf, Yt, nl2, nl,
-    baseMVA, xmax, xmin, &h, &g,
-    &dh, &dg, &gn, &hn, &dSf_dVa, &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
+    baseMVA, xmax, xmin, &h, &g, &dh, &dg, &gn, &hn, &dSf_dVa, &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
 #ifdef PROFILING
   ierr = PetscLogStagePop();CHKERRQ(ierr);
 #endif
@@ -668,6 +661,8 @@ ierr = DMDestroy(&dmnet);CHKERRQ(ierr);
   ierr = VecDestroy(&t2);CHKERRQ(ierr);
   ierr = ISDestroy(&il);CHKERRQ(ierr);
   ierr = ISDestroy(&k);CHKERRQ(ierr);
+
+  ierr = DMDestroy(&dmnet);CHKERRQ(ierr);
 
   ierr = PetscFinalize();CHKERRQ(ierr);
 

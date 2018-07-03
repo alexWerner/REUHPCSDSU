@@ -18,7 +18,6 @@ PetscErrorCode makeAdmMat(DM net, PetscScalar baseMVA, PetscInt nb, PetscInt nl,
 	ierr = DMNetworkGetEdgeRange(net,&eStart,&eEnd);CHKERRQ(ierr);
 	ierr = DMNetworkGetVertexRange(net,&vStart,&vEnd);CHKERRQ(ierr);
 
-PetscPrintf(PETSC_COMM_WORLD, "\n\n\n");
 	for (PetscInt i = eStart; i < eEnd; i++)
 	{
 		ierr = DMNetworkGetComponent(net,i,0,NULL,(void**)&edge);CHKERRQ(ierr);
@@ -66,7 +65,7 @@ PetscPrintf(PETSC_COMM_WORLD, "\n\n\n");
 	for (PetscInt i = vStart; i < vEnd; i++)
 	{
 		ierr = DMNetworkGetComponent(net,i,0,NULL,(void**)&bus);CHKERRQ(ierr);
-		ierr = MatSetValue(*Ybus, bus->internal_i, bus->internal_i, bus->gl + PETSC_i * bus->bl, ADD_VALUES);CHKERRQ(ierr);
+		ierr = MatSetValue(*Ybus, bus->internal_i, bus->internal_i, (bus->gl + PETSC_i * bus->bl) / baseMVA, ADD_VALUES);CHKERRQ(ierr);
 	}
 	ierr = MatAssemblyBegin(*Ybus, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 	ierr = MatAssemblyEnd(*Ybus, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);

@@ -3,127 +3,76 @@
 #include <math.h>
 
 //Sets
-PetscErrorCode setupConstraints(PetscInt nb, Mat bus_data, Mat gen_data, Vec *x, Vec *xmin, Vec *xmax)
+PetscErrorCode setupConstraints(DM net, PetscInt nb, PetscInt ng, Vec *x, Vec *xmin, Vec *xmax)
 {
   PetscErrorCode ierr;
   PetscFunctionBegin;
 
-  PetscInt ng;
-  ierr = MatGetSize(gen_data, &ng, NULL);CHKERRQ(ierr);
-
   PetscInt xSize = 2 * nb + 2 * ng;
 
-  //Setting up max and min values (lines 97 - 114)
-  Vec Va_max, Va_min, Vm_max, Vm_min, Pgmax, Pgmin, Qgmax, Qgmin, Pg, Qg, Vm, Va;
-  ierr = MakeVector(&Pg, ng);CHKERRQ(ierr);
-  ierr = MakeVector(&Qg, ng);CHKERRQ(ierr);
-  ierr = MakeVector(&Vm, nb);CHKERRQ(ierr);
-  ierr = MakeVector(&Va, nb);CHKERRQ(ierr);
-  ierr = MakeVector(&Va_max, nb);CHKERRQ(ierr);
-  ierr = MakeVector(&Va_min, nb);CHKERRQ(ierr);
-  ierr = MakeVector(&Vm_max, nb);CHKERRQ(ierr);
-  ierr = MakeVector(&Vm_min, nb);CHKERRQ(ierr);
-  ierr = MakeVector(&Pgmax, ng);CHKERRQ(ierr);
-  ierr = MakeVector(&Pgmin, ng);CHKERRQ(ierr);
-  ierr = MakeVector(&Qgmax, ng);CHKERRQ(ierr);
-  ierr = MakeVector(&Qgmin, ng);CHKERRQ(ierr);
+  ierr = MakeVector(x, xSize);CHKERRQ(ierr);
+  ierr = MakeVector(xmin, xSize);CHKERRQ(ierr);
+  ierr = MakeVector(xmax, xSize);CHKERRQ(ierr);
 
-  //Va_max = Inf(nb, 1);
-  //Va_min = -Va_max;
-  ierr = VecSet(Va_max, INFINITY);CHKERRQ(ierr);
-  ierr = VecSet(Va_min, -1 * INFINITY);CHKERRQ(ierr);
+  PetscInt       key,kk,numComponents;
+  VERTEX_Power   bus;
+  GEN            gen;
+  void * component;
 
-  //Doing Va first so I can use the values for Va_max and Va_min
-  //Va = bus_data(:, VA);
-  ierr = MatGetColumnVector(bus_data, Va, VA);CHKERRQ(ierr);
+  PetscInt vStart, vEnd;
+  ierr = DMNetworkGetVertexRange(net,&vStart,&vEnd);CHKERRQ(ierr);
 
-  //Not creating refs as a vector
-  //refs = bus_data(:, BUS_TYPE)==3;
-  //Va_max(refs) = bus_data(refs, VA);
-  //Va_min(refs) = bus_data(refs, VA);
-  Vec busType;
-  ierr = MakeVector(&busType, nb);CHKERRQ(ierr);
-  PetscScalar const *btArr;
-  PetscScalar const *VaArr;
-  PetscInt max, min;
-  ierr = MatGetColumnVector(bus_data, busType, BUS_TYPE);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(busType, &btArr);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(Va, &VaArr);CHKERRQ(ierr);
-  ierr = VecGetOwnershipRange(busType, &min, &max);CHKERRQ(ierr);
-  for(PetscInt i = min; i < max; i++)
+  for (PetscInt i = vStart; i < vEnd; i++)
   {
-    if(btArr[i - min] == 3)
+    ierr = DMNetworkGetNumComponents(net,i,&numComponents);CHKERRQ(ierr);
+    for (kk=0; kk < numComponents; kk++)
     {
-      ierr = VecSetValue(Va_max, i, VaArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
-      ierr = VecSetValue(Va_min, i, VaArr[i - min], INSERT_VALUES);CHKERRQ(ierr);
+      ierr = DMNetworkGetComponent(net,i,kk,&key,&component);CHKERRQ(ierr);
+      if (key == 1)
+      {
+        bus = (VERTEX_Power)(component);
+        ierr = VecSetValue(*x, bus->internal_i, bus->va, INSERT_VALUES);CHKERRQ(ierr);
+        ierr = VecSetValue(*x, bus->internal_i + nb, bus->vm, INSERT_VALUES);CHKERRQ(ierr);
+
+        if(bus->ide == 3)
+        {
+          ierr = VecSetValue(*xmin, bus->internal_i, bus->va, INSERT_VALUES);CHKERRQ(ierr);
+          ierr = VecSetValue(*xmax, bus->internal_i, bus->va, INSERT_VALUES);CHKERRQ(ierr);
+        }
+        else
+        {
+          ierr = VecSetValue(*xmin, bus->internal_i, PETSC_INFINITY * -1, INSERT_VALUES);CHKERRQ(ierr);
+          ierr = VecSetValue(*xmax, bus->internal_i, PETSC_INFINITY, INSERT_VALUES);CHKERRQ(ierr);
+        }
+
+        ierr = VecSetValue(*xmin, bus->internal_i + nb, 0.9, INSERT_VALUES);CHKERRQ(ierr);
+        ierr = VecSetValue(*xmax, bus->internal_i + nb, 1.1, INSERT_VALUES);CHKERRQ(ierr);
+
+
+      } else if (key == 2)
+      {
+        gen = (GEN)(component);
+
+        ierr = VecSetValue(*x, gen->idx + nb * 2, (gen->pt + gen->pb) / 200, INSERT_VALUES);CHKERRQ(ierr);
+        ierr = VecSetValue(*x, gen->idx + nb * 2 + ng, (gen->qt + gen->qb) / 200, INSERT_VALUES);CHKERRQ(ierr);
+
+        ierr = VecSetValue(*xmin, gen->idx + nb * 2, gen->pb / 100, INSERT_VALUES);CHKERRQ(ierr);
+        ierr = VecSetValue(*xmin, gen->idx + nb * 2 + ng, gen->qb / 100, INSERT_VALUES);CHKERRQ(ierr);
+
+        ierr = VecSetValue(*xmax, gen->idx + nb * 2, gen->pt / 100, INSERT_VALUES);CHKERRQ(ierr);
+        ierr = VecSetValue(*xmax, gen->idx + nb * 2 + ng, gen->qt / 100, INSERT_VALUES);CHKERRQ(ierr);
+      }
     }
   }
-  ierr = VecRestoreArrayRead(busType, &btArr);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(Va, &VaArr);CHKERRQ(ierr);
-  ierr = VecDestroy(&busType);CHKERRQ(ierr);
 
-  ierr = VecAssemblyBegin(Va_max);CHKERRQ(ierr);
-  ierr = VecAssemblyBegin(Va_min);CHKERRQ(ierr);
-  ierr = VecAssemblyEnd(Va_max);CHKERRQ(ierr);
-  ierr = VecAssemblyEnd(Va_min);CHKERRQ(ierr);
-
-
-  //Vm_max = 1.1 * ones(nb, 1);
-  //Vm_min = 0.9 * ones(nb, 1);
-  ierr = VecSet(Vm_max, 1.1);CHKERRQ(ierr);
-  ierr = VecSet(Vm_min, 0.9);CHKERRQ(ierr);
+  ierr = VecAssemblyBegin(*x);CHKERRQ(ierr);
+  ierr = VecAssemblyBegin(*xmin);CHKERRQ(ierr);
+  ierr = VecAssemblyBegin(*xmax);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(*x);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(*xmin);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(*xmax);CHKERRQ(ierr);
 
 
-  //Vm = bus_data(:, VM);
-  ierr = MatGetColumnVector(bus_data, Vm, VM);CHKERRQ(ierr);
-
-
-  //Pgmax = gen_data(:, PMAX)/100;
-  //Pgmin = gen_data(:, PMIN)/100;
-  ierr = MatGetColumnVector(gen_data, Pgmax, PMAX);CHKERRQ(ierr);
-  ierr = MatGetColumnVector(gen_data, Pgmin, PMIN);CHKERRQ(ierr);
-  ierr = VecScale(Pgmax, 0.01);CHKERRQ(ierr);
-  ierr = VecScale(Pgmin, 0.01);CHKERRQ(ierr);
-
-
-  //Pg = (Pgmax+Pgmin)/2;
-  ierr = VecWAXPY(Pg, 1, Pgmax, Pgmin);CHKERRQ(ierr);
-  ierr = VecScale(Pg, 0.5);CHKERRQ(ierr);
-
-
-  //Qgmax = gen_data(:, QMAX)/100;
-  //Qgmin = gen_data(:, QMIN)/100;
-  ierr = MatGetColumnVector(gen_data, Qgmax, QMAX);CHKERRQ(ierr);
-  ierr = MatGetColumnVector(gen_data, Qgmin, QMIN);CHKERRQ(ierr);
-  ierr = VecScale(Qgmax, 0.01);CHKERRQ(ierr);
-  ierr = VecScale(Qgmin, 0.01);CHKERRQ(ierr);
-
-
-  //Qg = (Qgmax+Qgmin)/2;
-  ierr = VecWAXPY(Qg, 1, Qgmax, Qgmin);CHKERRQ(ierr);
-  ierr = VecScale(Qg, 0.5);CHKERRQ(ierr);
-
-
-  //x = [Va; Vm; Pg; Qg];
-  //xmin = [Va_min; Vm_min; Pgmin; Qgmin];
-  //xmax = [Va_max; Vm_max; Pgmax; Qgmax];
-  Vec xVecs[4] = {Va, Vm, Pg, Qg};
-  Vec xmaxVecs[4] = {Va_max, Vm_max, Pgmax, Qgmax};
-  Vec xminVecs[4] = {Va_min, Vm_min, Pgmin, Qgmin};
-  ierr = stackNVectors(x, xVecs, 4, xSize);CHKERRQ(ierr);
-  ierr = stackNVectors(xmax, xmaxVecs, 4, xSize);CHKERRQ(ierr);
-  ierr = stackNVectors(xmin, xminVecs, 4, xSize);CHKERRQ(ierr);
-
-
-  //Clean up memory
-  ierr = VecDestroy(&Va_max);CHKERRQ(ierr);
-  ierr = VecDestroy(&Va_min);CHKERRQ(ierr);
-  ierr = VecDestroy(&Vm_max);CHKERRQ(ierr);
-  ierr = VecDestroy(&Vm_min);CHKERRQ(ierr);
-  ierr = VecDestroy(&Pgmax);CHKERRQ(ierr);
-  ierr = VecDestroy(&Pgmin);CHKERRQ(ierr);
-  ierr = VecDestroy(&Qgmax);CHKERRQ(ierr);
-  ierr = VecDestroy(&Qgmin);CHKERRQ(ierr);
   PetscFunctionReturn(0);
 }
 
