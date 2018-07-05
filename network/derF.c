@@ -280,7 +280,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   IS isFV;
   ierr = ISCreateGeneral(PETSC_COMM_WORLD, j, SfVals, PETSC_COPY_VALUES, &isFV);CHKERRQ(ierr);
   PetscFree(SfVals);
-
+  ISView(isFV, PETSC_VIEWER_STDOUT_WORLD);
   Vec VfInd;
   ierr = VecGetSubVector(V, isFV, &VfInd);CHKERRQ(ierr);
   ierr = VecDuplicate(VfInd, Sf);CHKERRQ(ierr);

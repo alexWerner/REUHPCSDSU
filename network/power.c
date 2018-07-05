@@ -129,7 +129,7 @@ PetscErrorCode CreateNetwork(DM *networkdm, PetscInt *nb, PetscInt *ng, PetscInt
     ierr = DMNetworkGetEdgeRange(*networkdm,&eStart,&eEnd);CHKERRQ(ierr);
     ierr = DMNetworkGetVertexRange(*networkdm,&vStart,&vEnd);CHKERRQ(ierr);
 
-#if 0
+#if 1
     EDGE_Power     edge;
     PetscInt       key,kk,numComponents;
     VERTEX_Power   bus;
