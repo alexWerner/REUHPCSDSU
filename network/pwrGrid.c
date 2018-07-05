@@ -62,7 +62,7 @@ int main(int argc,char **argv)
   IS il;
   PetscInt nl2;
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nLimited Lines\n====================\n");CHKERRQ(ierr);
-  ierr = getLimitedLines(branch_data, &il, &nl2);CHKERRQ(ierr);
+  ierr = getLimitedLines(dmnet, &il, &nl2);CHKERRQ(ierr);
 
 #ifdef PROFILING
   ierr = PetscLogStagePush(stage1);CHKERRQ(ierr);

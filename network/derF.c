@@ -77,41 +77,34 @@ PetscErrorCode setupConstraints(DM net, PetscInt nb, PetscInt ng, Vec *x, Vec *x
 }
 
 
-PetscErrorCode getLimitedLines(Mat branch_data, IS *il, PetscInt *nl2)
+PetscErrorCode getLimitedLines(DM net, IS *il, PetscInt *nl2)
 {
   PetscErrorCode ierr;
   PetscFunctionBegin;
 
-  PetscInt nl;
-  ierr = MatGetSize(branch_data, &nl, NULL);CHKERRQ(ierr);
-
   IS ilTemp;
 
-  Vec rateA;
-  ierr = MakeVector(&rateA, nl);CHKERRQ(ierr);
-  ierr = MatGetColumnVector(branch_data, rateA, RATE_A);CHKERRQ(ierr);
+  EDGE_Power edge;
 
-  PetscScalar const *aArr;
-  ierr = VecGetArrayRead(rateA, &aArr);CHKERRQ(ierr);
-  PetscInt min, max, n;
-  ierr = VecGetOwnershipRange(rateA, &min, &max);CHKERRQ(ierr);
-  ierr = VecGetLocalSize(rateA, &n);CHKERRQ(ierr);
+	PetscInt eStart, eEnd;
+	ierr = DMNetworkGetEdgeRange(net,&eStart,&eEnd);CHKERRQ(ierr);
   PetscInt *vals;
-  ierr = PetscMalloc1(n, &vals);CHKERRQ(ierr);
-  for(PetscInt i = min; i < max; i++)
-  {
-    if(aArr[i - min] == 0)
-      vals[i - min] = max;
-    else
-      vals[i - min] = i;
-  }
-  ierr = VecRestoreArrayRead(rateA, &aArr);CHKERRQ(ierr);
-  ierr = VecDestroy(&rateA);CHKERRQ(ierr);
+  ierr = PetscMalloc1(eEnd - eStart, &vals);CHKERRQ(ierr);
 
-  ierr = ISCreateGeneral(PETSC_COMM_WORLD, n, vals, PETSC_COPY_VALUES, il);CHKERRQ(ierr);
+  for (PetscInt i = eStart; i < eEnd; i++)
+	{
+		ierr = DMNetworkGetComponent(net,i,0,NULL,(void**)&edge);CHKERRQ(ierr);
+
+    if(edge->rateA == 0)
+      vals[i - eStart] = eEnd;
+    else
+      vals[i - eStart] = edge->idx;
+	}
+
+  ierr = ISCreateGeneral(PETSC_COMM_WORLD, eEnd - eStart, vals, PETSC_COPY_VALUES, il);CHKERRQ(ierr);
   PetscFree(vals);
 
-  ierr = ISCreateGeneral(PETSC_COMM_WORLD, 1, &max, PETSC_COPY_VALUES, &ilTemp);CHKERRQ(ierr);
+  ierr = ISCreateGeneral(PETSC_COMM_WORLD, 1, &eEnd, PETSC_COPY_VALUES, &ilTemp);CHKERRQ(ierr);
   ierr = indexDifference(*il, ilTemp, il);CHKERRQ(ierr);
 
   ierr = ISGetSize(*il, nl2);CHKERRQ(ierr);

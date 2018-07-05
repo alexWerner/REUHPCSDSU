@@ -120,6 +120,7 @@ PetscErrorCode CreateNetwork(DM *networkdm, PetscInt *nb, PetscInt *ng, PetscInt
 
     ierr = MPI_Bcast(ng,1,MPIU_INT,0,PETSC_COMM_WORLD);CHKERRQ(ierr);
     ierr = MPI_Bcast(nb,1,MPIU_INT,0,PETSC_COMM_WORLD);CHKERRQ(ierr);
+    ierr = MPI_Bcast(nl,1,MPIU_INT,0,PETSC_COMM_WORLD);CHKERRQ(ierr);
 
     /* Distribute networkdm to multiple processes */
     ierr = DMNetworkDistribute(networkdm,0);CHKERRQ(ierr);
@@ -128,7 +129,7 @@ PetscErrorCode CreateNetwork(DM *networkdm, PetscInt *nb, PetscInt *ng, PetscInt
     ierr = DMNetworkGetEdgeRange(*networkdm,&eStart,&eEnd);CHKERRQ(ierr);
     ierr = DMNetworkGetVertexRange(*networkdm,&vStart,&vEnd);CHKERRQ(ierr);
 
-#if 1
+#if 0
     EDGE_Power     edge;
     PetscInt       key,kk,numComponents;
     VERTEX_Power   bus;

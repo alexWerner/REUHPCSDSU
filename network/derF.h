@@ -4,7 +4,7 @@
 
 PetscErrorCode setupConstraints(DM net, PetscInt nb, PetscInt ng, Vec *x, Vec *xmin, Vec *xmax);
 
-PetscErrorCode getLimitedLines(Mat branch_data, IS *il, PetscInt *nl2);
+PetscErrorCode getLimitedLines(DM net, IS *il, PetscInt *nl2);
 
 PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   Mat branch_data, IS il, Mat Yf, Mat Yt, PetscInt nl2, PetscInt nl, PetscScalar baseMVA, Vec xmax, Vec xmin,
