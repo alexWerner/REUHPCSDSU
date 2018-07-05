@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include "admMat.h"
-#include "loadMat.h"
 #include "derF.h"
 #include "derS.h"
 #include "calcCost.h"
@@ -9,7 +8,6 @@
 
 int main(int argc,char **argv)
 {
-  Mat bus_data, branch_data, gen_cost, gen_data;
   PetscScalar baseMVA = 100;
   DM dmnet;
 
@@ -41,9 +39,6 @@ int main(int argc,char **argv)
 
   char fileName[100];
   ierr = PetscOptionsGetString(NULL, NULL, "-readFile", fileName, 100, NULL);CHKERRQ(ierr);
-
-  //ierr = loadMatrices(&bus_data, &branch_data, &gen_data, &gen_cost, read);CHKERRQ(ierr);
-  ierr = LoadMatrices(&bus_data, &branch_data, &gen_data, &gen_cost, fileName);CHKERRQ(ierr);
 
 
   Mat Cf, Ct, Yf, Yt, Ybus;
@@ -132,36 +127,25 @@ int main(int argc,char **argv)
   ierr = VecSet(e, 1);CHKERRQ(ierr);
 
 
-  //f2 = branch_data(il, F_BUS);
-  Vec f2;
-  ierr = getSubMatVector(&f2, branch_data, il, F_BUS, nl);
-
-
-  //t2 = branch_data(il, T_BUS);
-  Vec t2;
-  ierr = getSubMatVector(&t2, branch_data, il, T_BUS, nl);
-
-
   //Cf = sparse(1:nl2, f2, ones(nl2, 1), nl2, nb);
   //Ct = sparse(1:nl2, t2, ones(nl2, 1), nl2, nb);
   ierr = makeSparse(&Cf, nl2, nb, 1, 1);CHKERRQ(ierr);
   ierr = makeSparse(&Ct, nl2, nb, 1, 1);CHKERRQ(ierr);
 
-  PetscScalar const *fArr;
-  PetscScalar const *tArr;
-  PetscInt max, min;
+  PetscInt eStart, eEnd;
+  EDGE_Power edge;
+  ierr = DMNetworkGetEdgeRange(dmnet, &eStart, &eEnd);CHKERRQ(ierr);
 
-  ierr = VecGetArrayRead(f2, &fArr);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(t2, &tArr);CHKERRQ(ierr);
-  ierr = VecGetOwnershipRange(f2, &min, &max);CHKERRQ(ierr);
-
-  for(PetscInt i = min; i < max; i++)
+  PetscInt j = 0;
+  for (PetscInt i = eStart; i < eEnd; i++)
   {
-    ierr = MatSetValue(Cf, i, fArr[i - min] - 1, 1, INSERT_VALUES);CHKERRQ(ierr);
-    ierr = MatSetValue(Ct, i, tArr[i - min] - 1, 1, INSERT_VALUES);CHKERRQ(ierr);
+    ierr = DMNetworkGetComponent(dmnet,i,0,NULL,(void**)&edge);CHKERRQ(ierr);
+    if(edge->rateA != 0)
+    {
+      ierr = MatSetValue(Cf, j, edge->fbus - 1, 1, INSERT_VALUES);CHKERRQ(ierr);
+      ierr = MatSetValue(Ct, j++, edge->tbus - 1, 1, INSERT_VALUES);CHKERRQ(ierr);
+    }
   }
-  ierr = VecRestoreArrayRead(f2, &fArr);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(t2, &tArr);CHKERRQ(ierr);
 
   ierr = MatAssemblyBegin(Cf, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyBegin(Ct, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
@@ -177,7 +161,7 @@ int main(int argc,char **argv)
   Mat d2f;
 
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nCalculating Cost\n====================\n");CHKERRQ(ierr);
-  ierr = calcCost(x, gen_cost, baseMVA, nb, &fun, &df, &d2f);CHKERRQ(ierr);
+  ierr = calcCost(x, dmnet, baseMVA, nb, ng, &fun, &df, &d2f);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD, "Cost:%f\n", fun);
 #ifdef PROFILING
   ierr = PetscLogStagePop();CHKERRQ(ierr);
@@ -581,7 +565,7 @@ int main(int argc,char **argv)
     ierr = PetscPrintf(PETSC_COMM_WORLD, "\t[%d]Calculating Cost\n\t====================\n", i);CHKERRQ(ierr);
     ierr = VecDestroy(&df);CHKERRQ(ierr);
 	ierr = MatDestroy(&d2f);CHKERRQ(ierr);
-    ierr = calcCost(x, gen_cost, baseMVA, nb, &fun, &df, &d2f);CHKERRQ(ierr);
+    ierr = calcCost(x, dmnet, baseMVA, nb, ng, &fun, &df, &d2f);CHKERRQ(ierr);
     ierr = PetscPrintf(PETSC_COMM_WORLD, "\tCost:%f\n", fun);
 
 
@@ -640,10 +624,6 @@ int main(int argc,char **argv)
   ierr = MatDestroy(&Yf);CHKERRQ(ierr);
   ierr = MatDestroy(&Yt);CHKERRQ(ierr);
   ierr = MatDestroy(&Ybus);CHKERRQ(ierr);
-  ierr = MatDestroy(&branch_data);CHKERRQ(ierr);
-  ierr = MatDestroy(&bus_data);CHKERRQ(ierr);
-  ierr = MatDestroy(&gen_cost);CHKERRQ(ierr);
-  ierr = MatDestroy(&gen_data);CHKERRQ(ierr);
   ierr = MatDestroy(&Cf);CHKERRQ(ierr);
   ierr = MatDestroy(&Ct);CHKERRQ(ierr);
   ierr = MatDestroy(&Lxx);CHKERRQ(ierr);
@@ -657,8 +637,6 @@ int main(int argc,char **argv)
   ierr = VecDestroy(&z);CHKERRQ(ierr);
   ierr = VecDestroy(&mu);CHKERRQ(ierr);
   ierr = VecDestroy(&e);CHKERRQ(ierr);
-  ierr = VecDestroy(&f2);CHKERRQ(ierr);
-  ierr = VecDestroy(&t2);CHKERRQ(ierr);
   ierr = ISDestroy(&il);CHKERRQ(ierr);
   ierr = ISDestroy(&k);CHKERRQ(ierr);
 

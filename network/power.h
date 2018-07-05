@@ -97,6 +97,12 @@ struct _p_GEN{
   PetscScalar   scale_gen;
   PetscInt	internal_i; /* Internal Bus Number */
   PetscInt idx; /*index of generator*/
+
+  PetscInt model;
+  PetscScalar startup;
+  PetscScalar shutdown;
+  PetscInt ncost;
+  PetscScalar cost[3];
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
 typedef struct _p_GEN *GEN;

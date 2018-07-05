@@ -1,34 +1,61 @@
 #include "calcCost.h"
 
-PetscErrorCode calcCost(Vec x, Mat gen_cost, PetscScalar baseMVA, PetscInt nb, PetscScalar *fun, Vec *df, Mat *d2f)
+PetscErrorCode calcCost(Vec x, DM net, PetscScalar baseMVA, PetscInt nb, PetscInt ng, PetscScalar *fun, Vec *df, Mat *d2f)
 {
   PetscErrorCode ierr;
   PetscFunctionBegin;
 
   *fun = 0;
 
-  PetscInt ng, xSize;
-  ierr = MatGetSize(gen_cost, &ng, NULL);CHKERRQ(ierr);
+  PetscInt xSize;
   ierr = VecGetSize(x, &xSize);CHKERRQ(ierr);
 
   //f = sum(x(11:15) .* gen_cost(:, COST) * baseMVA);
-  Vec coefs;
-  ierr = MakeVector(&coefs, ng);CHKERRQ(ierr);
-  ierr = MatGetColumnVector(gen_cost, coefs, NCOST);CHKERRQ(ierr);
+  PetscInt n, vStart, vEnd;
+  ierr = DMNetworkGetVertexRange(net, &vStart, &vEnd);CHKERRQ(ierr);
 
-  PetscReal nReal;
-  ierr = VecMax(coefs, NULL, &nReal);CHKERRQ(ierr); /*assumes value for NCOST is same for all rows*/
-  ierr = VecDestroy(&coefs);CHKERRQ(ierr);
+  PetscInt       key,kk,numComponents;
+  GEN            gen;
+  void * component;
 
-  PetscInt n = nReal;
+  ierr = DMNetworkGetNumComponents(net,vStart,&numComponents);CHKERRQ(ierr);
+  for (kk=0; kk < numComponents; kk++)
+  {
+    ierr = DMNetworkGetComponent(net,vStart,kk,&key,&component);CHKERRQ(ierr);
+    if (key == 2)
+    {
+      gen = (GEN)(component);
+      n = gen->ncost;
+    }
+  }
+
   Vec cost[n];
+  for(PetscInt i = 0; i < n; i++)
+  {
+    ierr = MakeVector(&cost[i], ng);CHKERRQ(ierr);
+
+    for (PetscInt j = vStart; j < vEnd; j++)
+    {
+      ierr = DMNetworkGetNumComponents(net,j,&numComponents);CHKERRQ(ierr);
+      for (kk=0; kk < numComponents; kk++)
+      {
+        ierr = DMNetworkGetComponent(net,j,kk,&key,&component);CHKERRQ(ierr);
+        if (key == 2)
+        {
+          gen = (GEN)(component);
+          ierr = VecSetValue(cost[i], gen->idx, gen->cost[i], INSERT_VALUES);CHKERRQ(ierr);
+        }
+      }
+    }
+    ierr = VecAssemblyBegin(cost[i]);CHKERRQ(ierr);
+    ierr = VecAssemblyEnd(cost[i]);CHKERRQ(ierr);
+  }
+
+
+
 
   for(PetscInt i = 0; i < n; i++)
   {
-
-    ierr = MakeVector(&cost[i], ng);CHKERRQ(ierr);
-    ierr = MatGetColumnVector(gen_cost, cost[i], COST + i);CHKERRQ(ierr);
-
     Vec xSub;
     ierr = getVecIndices(x, nb * 2, nb * 2 + ng, &xSub);CHKERRQ(ierr);
 	  ierr = VecScale(xSub, baseMVA);CHKERRQ(ierr);

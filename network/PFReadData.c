@@ -15,8 +15,9 @@ PetscErrorCode PFReadMatPowerData(PFDATA *pf,char *filename)
   PetscInt       bus_start_line=-1,bus_end_line=-1; /* xx_end_line points to the next line after the record ends */
   PetscInt       gen_start_line=-1,gen_end_line=-1;
   PetscInt       br_start_line=-1,br_end_line=-1;
+  PetscInt       cost_start_line=-1,cost_end_line=-1;
   char           line[MAXLINE];
-  PetscInt       loadi=0,geni=0,bri=0,busi=0,i,j;
+  PetscInt       loadi=0,geni=0,bri=0,busi=0,costi=0,i,j;
   int            extbusnum,bustype_i;
   double         Pd,Qd;
   PetscInt       maxbusnum=-1,intbusnum,*busext2intmap,genj,loadj;
@@ -31,13 +32,15 @@ PetscErrorCode PFReadMatPowerData(PFDATA *pf,char *filename)
   while(fgets(line,MAXLINE,fp))
   {
     if (strstr(line,"mpc.bus = ["))    bus_start_line = line_counter+1; /* Bus data starts from next line */
-    if (strstr(line,"mpc.gen") && gen_start_line == -1)    gen_start_line = line_counter+1; /* Generator data starts from next line */
-    if (strstr(line,"mpc.branch")) br_start_line = line_counter+1; /* Branch data starts from next line */
+    if (strstr(line,"mpc.gen ") && gen_start_line == -1)    gen_start_line = line_counter+1; /* Generator data starts from next line */
+    if (strstr(line,"mpc.branch ")) br_start_line = line_counter+1; /* Branch data starts from next line */
+    if (strstr(line,"mpc.gencost ") && cost_start_line == -1)    cost_start_line = line_counter+1; /* Generator data starts from next line */
     if (strstr(line,"];"))
     {
       if (bus_start_line != -1 && bus_end_line == -1) bus_end_line = line_counter;
       if (gen_start_line != -1 && gen_end_line == -1) gen_end_line = line_counter;
       if (br_start_line  != -1 && br_end_line == -1) br_end_line = line_counter;
+      if (cost_start_line  != -1 && cost_end_line == -1) cost_end_line = line_counter;
     }
 
     /* Count the number of pq loads */
@@ -129,6 +132,22 @@ PetscErrorCode PFReadMatPowerData(PFDATA *pf,char *filename)
       geni++;
     }
 
+    if (i >= cost_start_line && i < cost_end_line)
+    {
+      double startup, shutdown, c1, c2, c3;
+      int    model, coefs;
+      sscanf(line,"%d %lf %lf %d %lf %lf %lf",&model,&startup,&shutdown,&coefs,&c1,&c2,&c3);
+      Gen[costi].model = model;
+      Gen[costi].startup = startup;
+      Gen[costi].shutdown = shutdown;
+      Gen[costi].ncost = coefs;
+      Gen[costi].cost[0] = c1;
+      Gen[costi].cost[1] = c2;
+      Gen[costi].cost[2] = c3;
+
+      costi++;
+    }
+
     if (i >= br_start_line && i < br_end_line)
     {
       PetscScalar R,X,Bc,Ys;
@@ -158,11 +177,8 @@ PetscErrorCode PFReadMatPowerData(PFDATA *pf,char *filename)
       Ys = 1 / (R + PETSC_i * X);
 
       Branch[bri].yff = Ys + PETSC_i * Bc / 2;
-
       Branch[bri].yft = -1 * Ys;
-
       Branch[bri].ytf = -1 * Ys;
-
       Branch[bri].ytt = Branch[bri].yff;
 
       bri++;
