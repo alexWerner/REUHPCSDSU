@@ -115,17 +115,14 @@ PetscErrorCode getLimitedLines(DM net, IS *il, PetscInt *nl2)
 }
 
 //Comparable to gh_fcn1 in matlab
-PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
-  Mat branch_data, IS il, Mat Yf, Mat Yt, PetscInt nl2, PetscInt nl, PetscScalar baseMVA, Vec xmax, Vec xmin,
+PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
+  Mat Yt, PetscInt nl2, PetscInt nb, PetscInt ng, PetscInt nl, PetscScalar baseMVA, Vec xmax, Vec xmin,
   Vec *h, Vec *g, Mat *dh, Mat *dg, Vec *gn, Vec *hn,
   Mat * dSf_dVa, Mat *dSf_dVm, Mat *dSt_dVm, Mat *dSt_dVa, Vec *Sf, Vec *St)
 {
   PetscErrorCode ierr;
   PetscFunctionBegin;
 
-  PetscInt nb, ng;
-  ierr = MatGetSize(bus_data, &nb, NULL);CHKERRQ(ierr);
-  ierr = MatGetSize(gen_data, &ng, NULL);CHKERRQ(ierr);
 
   PetscInt xSize = 2 * nb + 2 * ng;
 
@@ -137,28 +134,44 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = getVecIndices(x, xSize - ng, xSize, &Qg);CHKERRQ(ierr);
 
 
-  //gen_buses = gen_data(:, GEN_BUS);
-  Vec gen_buses;
-  ierr = MakeVector(&gen_buses, ng);CHKERRQ(ierr);
-  ierr = MatGetColumnVector(gen_data, gen_buses, GEN_BUS);CHKERRQ(ierr);
-
-
   //Cg - sparse(gen_buses, (1:ng)', 1, nb, ng);
   //Using transpose here for the matrix preallocation (one value per column)
   Mat Cg, CgT;
   ierr = makeSparse(&CgT, ng, nb, 1, 1);
 
-  PetscScalar const *genBusArr;
-  ierr = VecGetArrayRead(gen_buses, &genBusArr);CHKERRQ(ierr);
   PetscInt min, max;
-  ierr = VecGetOwnershipRange(gen_buses, &min, &max);CHKERRQ(ierr);
-  for(PetscInt i = min; i < max; i++)
+  PetscInt vStart, vEnd;
+  ierr = DMNetworkGetVertexRange(net,&vStart,&vEnd);CHKERRQ(ierr);
+
+  PetscInt key,kk,numComponents;
+  GEN gen;
+  LOAD load;
+  void * component;
+  Vec Sload;
+  ierr = MakeVector(&Sload, nb);CHKERRQ(ierr);
+
+  for (PetscInt i = vStart; i < vEnd; i++)
   {
-    ierr = MatSetValue(CgT, i, genBusArr[i - min] - 1, 1, INSERT_VALUES);CHKERRQ(ierr);
+    ierr = DMNetworkGetNumComponents(net,i,&numComponents);CHKERRQ(ierr);
+    for (kk=0; kk < numComponents; kk++)
+    {
+      ierr = DMNetworkGetComponent(net,i,kk,&key,&component);CHKERRQ(ierr);
+      if (key == 3) //Sload
+      {
+        load = (LOAD)(component);
+        ierr = VecSetValue(Sload, load->internal_i, (load->pl + PETSC_i * load->ql) / baseMVA, INSERT_VALUES);CHKERRQ(ierr);
+
+      } else if (key == 2) //Cg
+      {
+        gen = (GEN)(component);
+        ierr = MatSetValue(CgT, gen->idx, gen->bus_i - 1, 1, INSERT_VALUES);CHKERRQ(ierr);
+      }
+    }
   }
   ierr = MatAssemblyBegin(CgT, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = VecAssemblyBegin(Sload);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(CgT, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(gen_buses, &genBusArr);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(Sload);CHKERRQ(ierr);
 
   ierr = MatTranspose(CgT, MAT_INITIAL_MATRIX, &Cg);CHKERRQ(ierr);
   ierr = MatDestroy(&CgT);CHKERRQ(ierr);
@@ -173,20 +186,6 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = MatMult(Cg, SbusgWork, Sbusg);CHKERRQ(ierr);
   ierr = VecDestroy(&SbusgWork);CHKERRQ(ierr);
 
-
-  //Sload = (bus_data(:, PD) + 1j * bus_data(:,QD)) / baseMVA;
-  Vec Sload, pd, qd;
-  ierr = MakeVector(&Sload, nb);CHKERRQ(ierr);
-  ierr = MakeVector(&pd, nb);CHKERRQ(ierr);
-  ierr = MakeVector(&qd, nb);CHKERRQ(ierr);
-
-  ierr = MatGetColumnVector(bus_data, pd, PD);CHKERRQ(ierr);
-  ierr = MatGetColumnVector(bus_data, qd, QD);CHKERRQ(ierr);
-  ierr = VecWAXPY(Sload, PETSC_i, qd, pd);CHKERRQ(ierr);
-  ierr = VecScale(Sload, 1 / baseMVA);CHKERRQ(ierr);
-
-  ierr = VecDestroy(&pd);CHKERRQ(ierr);
-  ierr = VecDestroy(&qd);CHKERRQ(ierr);
 
   //Sbus = Sbusg - Sload;
   Vec Sbus;
@@ -237,26 +236,27 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
 
 
   //flow_max = (branch_data(il, RATE_A) / baseMVA) .^ 2;
-  Vec flow_max, branchRateA, flowMaxTemp;
-  ierr = MakeVector(&branchRateA, nl);CHKERRQ(ierr);
-  ierr = MatGetColumnVector(branch_data, branchRateA, RATE_A);CHKERRQ(ierr);
+  Vec flow_max, flowTemp;
+  ierr = MakeVector(&flowTemp, nl);CHKERRQ(ierr);
 
-  ierr = VecScale(branchRateA, 1 / baseMVA);CHKERRQ(ierr);
-  ierr = VecPow(branchRateA, 2);CHKERRQ(ierr);
+  PetscInt eStart, eEnd;
+  ierr = DMNetworkGetEdgeRange(net,&eStart,&eEnd);CHKERRQ(ierr);
+  EDGE_Power     edge;
 
-  ierr = VecGetSubVector(branchRateA, il, &flowMaxTemp);CHKERRQ(ierr);
-  ierr = VecDuplicate(flowMaxTemp, &flow_max);CHKERRQ(ierr);
-  ierr = VecCopy(flowMaxTemp, flow_max);CHKERRQ(ierr);
-  ierr = VecRestoreSubVector(branchRateA, il, &flowMaxTemp);CHKERRQ(ierr);
+  for (PetscInt i = eStart; i < eEnd; i++)
+  {
+    ierr = DMNetworkGetComponent(net,i,0,&key,(void**)&edge);CHKERRQ(ierr);
+    ierr = VecSetValue(flowTemp, edge->idx, (edge->rateA * edge->rateA / baseMVA / baseMVA), INSERT_VALUES);CHKERRQ(ierr);
+  }
+  ierr = VecAssemblyBegin(flowTemp);CHKERRQ(ierr);
+  ierr = VecAssemblyBegin(flowTemp);CHKERRQ(ierr);
 
-  ierr = VecDestroy(&branchRateA);CHKERRQ(ierr);
-  ierr = VecDestroy(&flowMaxTemp);CHKERRQ(ierr);
+  ierr = getSubVector(flowTemp, il, &flow_max);CHKERRQ(ierr);
+  ierr = VecDestroy(&flowTemp);CHKERRQ(ierr);
 
 
   //Sf = V(branch_data(il, F_BUS)) .* conj(Yf(il, :) * V);
-  Vec ilFVals;
   Mat YfIl;
-  ierr = getSubMatVector(&ilFVals, branch_data, il, F_BUS, nl);CHKERRQ(ierr);
   ierr = MatCreateSubMatrix(Yf, il, NULL, MAT_INITIAL_MATRIX, &YfIl);CHKERRQ(ierr);
 
   Vec YfV, VfRight;
@@ -267,21 +267,18 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecDestroy(&VfRight);CHKERRQ(ierr);
   ierr = VecConjugate(YfV);CHKERRQ(ierr);
 
-  PetscScalar const *ilFVArr;
-  ierr = VecGetArrayRead(ilFVals, &ilFVArr);CHKERRQ(ierr);
-  ierr = VecGetOwnershipRange(ilFVals, &min, &max);CHKERRQ(ierr);
-  PetscInt n;
-  ierr = VecGetLocalSize(ilFVals, &n);CHKERRQ(ierr);
   PetscInt *SfVals;
-  ierr = PetscMalloc1(n, &SfVals);CHKERRQ(ierr);
-  for(PetscInt i = min; i < max; i++)
+  ierr = PetscMalloc1(nl2, &SfVals);CHKERRQ(ierr);
+  PetscInt j = 0;
+  for (PetscInt i = eStart; i < eEnd; i++)
   {
-    SfVals[i - min] = ilFVArr[i - min]-1;
+    ierr = DMNetworkGetComponent(net,i,0,&key,(void**)&edge);CHKERRQ(ierr);
+    if(edge->rateA != 0)
+      SfVals[j++] = edge->fbus - 1;
   }
-  ierr = VecRestoreArrayRead(ilFVals, &ilFVArr);CHKERRQ(ierr);
 
   IS isFV;
-  ierr = ISCreateGeneral(PETSC_COMM_WORLD, n, SfVals, PETSC_COPY_VALUES, &isFV);CHKERRQ(ierr);
+  ierr = ISCreateGeneral(PETSC_COMM_WORLD, j, SfVals, PETSC_COPY_VALUES, &isFV);CHKERRQ(ierr);
   PetscFree(SfVals);
 
   Vec VfInd;
@@ -290,13 +287,9 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecPointwiseMult(*Sf, VfInd, YfV);CHKERRQ(ierr);
   ierr = VecRestoreSubVector(V, isFV, &VfInd);CHKERRQ(ierr);
 
-  ierr = VecDestroy(&ilFVals);CHKERRQ(ierr);
-
 
   //St = V(branch_data(il, T_BUS)) .* conj(Yt(il, :) * V);
-  Vec ilTVals;
   Mat YtIl;
-  ierr = getSubMatVector(&ilTVals, branch_data, il, T_BUS, nl);CHKERRQ(ierr);
   ierr = MatCreateSubMatrix(Yt, il, NULL, MAT_INITIAL_MATRIX, &YtIl);CHKERRQ(ierr);
 
   Vec YtV, VtRight;
@@ -307,20 +300,18 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecDestroy(&VtRight);CHKERRQ(ierr);
   ierr = VecConjugate(YtV);CHKERRQ(ierr);
 
-  PetscScalar const *ilTVArr;
-  ierr = VecGetArrayRead(ilTVals, &ilTVArr);CHKERRQ(ierr);
-  ierr = VecGetOwnershipRange(ilTVals, &min, &max);CHKERRQ(ierr);
-  ierr = VecGetLocalSize(ilTVals, &n);CHKERRQ(ierr);
   PetscInt *StVals;
-  ierr = PetscMalloc1(n, &StVals);
-  for(PetscInt i = min; i < max; i++)
+  ierr = PetscMalloc1(nl2, &StVals);CHKERRQ(ierr);
+  j = 0;
+  for (PetscInt i = eStart; i < eEnd; i++)
   {
-    StVals[i - min] = ilTVArr[i - min]-1;
+    ierr = DMNetworkGetComponent(net,i,0,&key,(void**)&edge);CHKERRQ(ierr);
+    if(edge->rateA != 0)
+      StVals[j++] = edge->tbus - 1;
   }
-  ierr = VecRestoreArrayRead(ilTVals, &ilTVArr);CHKERRQ(ierr);
 
   IS isTV;
-  ierr = ISCreateGeneral(PETSC_COMM_WORLD, n, StVals, PETSC_COPY_VALUES, &isTV);CHKERRQ(ierr);
+  ierr = ISCreateGeneral(PETSC_COMM_WORLD, j, StVals, PETSC_COPY_VALUES, &isTV);CHKERRQ(ierr);
   PetscFree(StVals);
 
   Vec VtInd;
@@ -328,8 +319,6 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecDuplicate(VtInd, St);CHKERRQ(ierr);
   ierr = VecPointwiseMult(*St, VtInd, YtV);CHKERRQ(ierr);
   ierr = VecRestoreSubVector(V, isTV, &VtInd);CHKERRQ(ierr);
-
-  ierr = VecDestroy(&ilTVals);CHKERRQ(ierr);
 
 
   //hn = [Sf .* conj(Sf) - flow_max;
@@ -426,22 +415,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
 
   //neg_Cg = sparse(gen_data(:, GEN_BUS), 1:ng, -1, nb, ng);
   Mat neg_Cg;
-  ierr = makeSparse(&neg_Cg, nb, ng, ng, ng);CHKERRQ(ierr);//Come back to this and change it later
-
-  Vec genBus;
-  ierr = MakeVector(&genBus, ng);CHKERRQ(ierr);
-  ierr = MatGetColumnVector(gen_data, genBus, GEN_BUS);CHKERRQ(ierr);
-
-  PetscScalar const *negCgArr;
-  ierr = VecGetArrayRead(genBus, &negCgArr);CHKERRQ(ierr);
-  ierr = VecGetOwnershipRange(genBus, &min, &max);CHKERRQ(ierr);
-  for(PetscInt i = min; i < max; i++)
-  {
-    ierr = MatSetValue(neg_Cg, negCgArr[i - min] - 1, i, -1, INSERT_VALUES);CHKERRQ(ierr);
-  }
-  ierr = MatAssemblyBegin(neg_Cg, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(neg_Cg, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = VecRestoreArrayRead(genBus, &negCgArr);CHKERRQ(ierr);
+  ierr = MatScale(Cg, -1);CHKERRQ(ierr);
+  neg_Cg = Cg;
 
 
   //dgn = sparse(2*nb, n_var);
@@ -895,7 +870,6 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = MatDestroy(&dSbus_dVa);CHKERRQ(ierr);
   ierr = MatDestroy(&diagV);CHKERRQ(ierr);
   ierr = MatDestroy(&diagVnorm);CHKERRQ(ierr);
-  ierr = MatDestroy(&Cg);CHKERRQ(ierr);
   ierr = MatDestroy(&dgn);CHKERRQ(ierr);
   ierr = MatDestroy(&diagVf);CHKERRQ(ierr);
   ierr = MatDestroy(&diagVt);CHKERRQ(ierr);
@@ -911,7 +885,6 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = MatDestroy(&Ai);CHKERRQ(ierr);
   ierr = VecDestroy(&bi);CHKERRQ(ierr);
   ierr = VecDestroy(&be);CHKERRQ(ierr);
-  ierr = VecDestroy(&gen_buses);CHKERRQ(ierr);
   ierr = VecDestroy(&Sbusg);CHKERRQ(ierr);
   ierr = VecDestroy(&Sload);CHKERRQ(ierr);
   ierr = VecDestroy(&Sbus);CHKERRQ(ierr);
@@ -919,7 +892,6 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, Mat bus_data, Mat gen_data,
   ierr = VecDestroy(&flow_max);CHKERRQ(ierr);
   ierr = VecDestroy(&Vnorm);CHKERRQ(ierr);
   ierr = VecDestroy(&Ibus);CHKERRQ(ierr);
-  ierr = VecDestroy(&genBus);CHKERRQ(ierr);
   ierr = VecDestroy(&YfV);CHKERRQ(ierr);
   ierr = VecDestroy(&YtV);CHKERRQ(ierr);
   ierr = VecDestroy(&If);CHKERRQ(ierr);

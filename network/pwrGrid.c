@@ -70,7 +70,7 @@ int main(int argc,char **argv)
   Vec h, g, gn, hn, Sf, St;
   Mat dh, dg, dSf_dVa, dSf_dVm, dSt_dVm, dSt_dVa;
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nFirst Derivative\n====================\n");CHKERRQ(ierr);
-  calcFirstDerivative(x, Ybus, bus_data, gen_data, branch_data, il, Yf, Yt, nl2, nl,
+  calcFirstDerivative(x, Ybus, dmnet, il, Yf, Yt, nl2, nb, ng, nl,
     baseMVA, xmax, xmin, &h, &g, &dh, &dg, &gn, &hn, &dSf_dVa, &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
 #ifdef PROFILING
   ierr = PetscLogStagePop();CHKERRQ(ierr);
@@ -602,8 +602,8 @@ int main(int argc,char **argv)
     ierr = MatDestroy(&dSf_dVm);CHKERRQ(ierr);
     ierr = MatDestroy(&dSt_dVa);CHKERRQ(ierr);
     ierr = MatDestroy(&dSt_dVm);CHKERRQ(ierr);
-    calcFirstDerivative(x, Ybus, bus_data, gen_data, branch_data, il, Yf, Yt,
-	  nl2, nl, baseMVA, xmax, xmin, &h, &g, &dh, &dg, &gn, &hn, &dSf_dVa,
+    calcFirstDerivative(x, Ybus, dmnet, il, Yf, Yt,
+	  nl2, nb, ng, nl, baseMVA, xmax, xmin, &h, &g, &dh, &dg, &gn, &hn, &dSf_dVa,
 	  &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
 #ifdef PROFILING
     ierr = PetscLogStagePop();CHKERRQ(ierr);
