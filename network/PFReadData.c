@@ -17,7 +17,7 @@ PetscErrorCode PFReadMatPowerData(PFDATA *pf,char *filename)
   PetscInt       br_start_line=-1,br_end_line=-1;
   PetscInt       cost_start_line=-1,cost_end_line=-1;
   char           line[MAXLINE];
-  PetscInt       loadi=0,geni=0,bri=0,busi=0,costi=0,i,j;
+  PetscInt       loadi=0,geni=0,bri=0,busi=0,costi=0,limi=0,i,j;
   int            extbusnum,bustype_i;
   double         Pd,Qd;
   PetscInt       maxbusnum=-1,intbusnum,*busext2intmap,genj,loadj;
@@ -92,6 +92,7 @@ PetscErrorCode PFReadMatPowerData(PFDATA *pf,char *filename)
       sscanf(line,"%d %d %lf %lf %lf %lf %d %lf %lf %lf",&bus_i,&ide,&Pd,&Qd,&gl,&bl,&area,&vm,&va,&basekV);
       Bus[busi].bus_i = bus_i; Bus[busi].ide = ide; Bus[busi].area = area;
       Bus[busi].gl = gl; Bus[busi].bl = bl;
+      PetscPrintf(PETSC_COMM_WORLD, "bl|%f\n", Bus[busi].bl);
       Bus[busi].vm = vm; Bus[busi].va = va; Bus[busi].basekV = basekV;
       Bus[busi].internal_i = busi;
       busext2intmap[Bus[busi].bus_i] = busi;
@@ -159,9 +160,15 @@ PetscErrorCode PFReadMatPowerData(PFDATA *pf,char *filename)
       Branch[bri].rateA = rateA; Branch[bri].rateB = rateB; Branch[bri].rateC = rateC;
       Branch[bri].tapratio = tapratio; Branch[bri].phaseshift = phaseshift;
       Branch[bri].idx = bri;
+      if(rateA != 0)
+        Branch[bri].limitIdx = limi++;
+      else
+        Branch[bri].limitIdx = -1;
 
       if(Branch[bri].tapratio == 0.0) Branch[bri].tapratio = 1.0;
-      Branch[bri].phaseshift *= PETSC_PI/180.0;
+      Branch[bri].phaseshift *= PETSC_i * PETSC_PI/180.0;
+      Branch[bri].tapratio *= PetscExpComplex(Branch[bri].phaseshift);
+      PetscScalar tapconj = PetscConjComplex(Branch[bri].tapratio);
 
       intbusnum = busext2intmap[Branch[bri].fbus];
       Branch[bri].internal_i = intbusnum;
@@ -176,10 +183,10 @@ PetscErrorCode PFReadMatPowerData(PFDATA *pf,char *filename)
 
       Ys = 1 / (R + PETSC_i * X);
 
-      Branch[bri].yff = Ys + PETSC_i * Bc / 2;
-      Branch[bri].yft = -1 * Ys;
-      Branch[bri].ytf = -1 * Ys;
-      Branch[bri].ytt = Branch[bri].yff;
+      Branch[bri].ytt = Ys + PETSC_i * Bc / 2;
+      Branch[bri].yft = -1 * Ys / tapconj;
+      Branch[bri].ytf = -1 * Ys / Branch[bri].tapratio;
+      Branch[bri].yff = Branch[bri].ytt / (Branch[bri].tapratio * tapconj);
 
       bri++;
     }

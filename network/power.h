@@ -134,6 +134,7 @@ struct _p_EDGE_Power{
   PetscInt	internal_i; /* Internal From Bus Number */
   PetscInt	internal_j; /* Internal To Bus Number */
   PetscInt idx; /*index of branch*/
+  PetscInt limitIdx; /*index relative to other limited branches */
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
 typedef struct _p_EDGE_Power *EDGE_Power;

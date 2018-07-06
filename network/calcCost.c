@@ -17,7 +17,6 @@ PetscErrorCode calcCost(Vec x, DM net, PetscScalar baseMVA, PetscInt nb, PetscIn
   PetscInt       key,kk,numComponents;
   GEN            gen;
   void * component;
-
   ierr = DMNetworkGetNumComponents(net,vStart,&numComponents);CHKERRQ(ierr);
   for (kk=0; kk < numComponents; kk++)
   {
@@ -28,28 +27,22 @@ PetscErrorCode calcCost(Vec x, DM net, PetscScalar baseMVA, PetscInt nb, PetscIn
       n = gen->ncost;
     }
   }
-
-  PetscInt rank;
-  MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-
+  ierr = MPI_Bcast(&n,1,MPIU_INT,0,PETSC_COMM_WORLD);CHKERRQ(ierr);
 
   Vec cost[n];
   for(PetscInt i = 0; i < n; i++)
   {
     ierr = MakeVector(&cost[i], ng);CHKERRQ(ierr);
-    PetscPrintf(PETSC_COMM_SELF, "S:%d\tE:%d\n", vStart, vEnd);
     for (PetscInt j = vStart; j < vEnd; j++)
     {
       ierr = DMNetworkGetNumComponents(net,j,&numComponents);CHKERRQ(ierr);
       for (kk=0; kk < numComponents; kk++)
       {
         ierr = DMNetworkGetComponent(net,j,kk,&key,&component);CHKERRQ(ierr);
-        PetscPrintf(PETSC_COMM_SELF, "[%d] j:%d\tnum:%d\tkey:%d\t\n", rank, j, numComponents, key);
         if (key == 2)
         {
           gen = (GEN)(component);
           ierr = VecSetValue(cost[i], gen->idx, gen->cost[i], INSERT_VALUES);CHKERRQ(ierr);
-          PetscPrintf(PETSC_COMM_SELF, "[%d]\t%d %d %f\t\t%d %d\n", rank, i, gen->idx, gen->cost[i], n, numComponents);
         }
       }
     }

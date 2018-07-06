@@ -141,7 +141,7 @@ PetscErrorCode CreateNetwork(DM *networkdm, PetscInt *nb, PetscInt *ng, PetscInt
     {
       ierr = DMNetworkGetComponent(*networkdm,i,0,&key,(void**)&edge);CHKERRQ(ierr);
       ierr = DMNetworkGetNumComponents(*networkdm,i,&numComponents);CHKERRQ(ierr);
-      ierr = PetscPrintf(PETSC_COMM_SELF,"Rank %d ncomps = %d Line %d ---- %d\n",crank,numComponents,edge->internal_i,edge->internal_j);CHKERRQ(ierr);
+      ierr = PetscPrintf(PETSC_COMM_SELF,"Rank %d ncomps = %d Line %d ---- %d  Rate %f\n",crank,numComponents,edge->internal_i,edge->internal_j, edge->rateA);CHKERRQ(ierr);
     }
 
 

@@ -38,7 +38,7 @@ PetscErrorCode addNonzeros(Mat m, PetscInt r, PetscInt *rowArr, PetscInt c, Pets
 {
   PetscErrorCode ierr;
   PetscFunctionBegin;
-  
+
   for(int i = 0; i < r; i++)
   {
     for(int j = 0; j < c; j++)
@@ -78,7 +78,7 @@ PetscErrorCode getSubMatVector(Vec *subVec, Mat m, IS is, PetscInt col, PetscInt
 {
   PetscErrorCode ierr;
   PetscFunctionBegin;
-  
+
   Vec v;
   ierr = MakeVector(&v, vecSize);CHKERRQ(ierr);
   ierr = MatGetColumnVector(m, v, col);CHKERRQ(ierr);
@@ -200,7 +200,7 @@ PetscErrorCode restructureVec(Vec a, Vec *b)
 {
   PetscErrorCode ierr;
   PetscFunctionBegin;
-  
+
   PetscInt size, max, min;
   ierr = VecGetSize(a, &size);CHKERRQ(ierr);
 

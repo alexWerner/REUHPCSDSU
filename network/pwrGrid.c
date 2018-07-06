@@ -31,6 +31,15 @@ int main(int argc,char **argv)
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nYbus\n====================\n");CHKERRQ(ierr);
   ierr = makeAdmMat(dmnet, baseMVA, nb, nl, &Yf, &Yt, &Ybus);CHKERRQ(ierr);
 
+  PetscViewer matOut;
+  PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/Yf", FILE_MODE_WRITE, &matOut);
+  MatView(Yf, matOut);
+  PetscViewerDestroy(&matOut);
+
+  PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/Yt", FILE_MODE_WRITE, &matOut);
+  MatView(Yt, matOut);
+  PetscViewerDestroy(&matOut);
+
   Vec x, xmin, xmax;
 
 
@@ -41,7 +50,7 @@ int main(int argc,char **argv)
   IS il;
   PetscInt nl2;
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nLimited Lines\n====================\n");CHKERRQ(ierr);
-  ierr = getLimitedLines(dmnet, &il, &nl2);CHKERRQ(ierr);
+  ierr = getLimitedLines(dmnet, nl, &il, &nl2);CHKERRQ(ierr);
 
 
   Vec h, g, gn, hn, Sf, St;
@@ -115,18 +124,13 @@ int main(int argc,char **argv)
   EDGE_Power edge;
   ierr = DMNetworkGetEdgeRange(dmnet, &eStart, &eEnd);CHKERRQ(ierr);
 
-  PetscInt j = 0;
   for (PetscInt i = eStart; i < eEnd; i++)
   {
     ierr = DMNetworkGetComponent(dmnet,i,0,NULL,(void**)&edge);CHKERRQ(ierr);
     if(edge->rateA != 0)
     {
-      ierr = MatSetValue(Cf, j, edge->fbus - 1, 1, INSERT_VALUES);CHKERRQ(ierr);
-      ierr = MatSetValue(Ct, j++, edge->tbus - 1, 1, INSERT_VALUES);CHKERRQ(ierr);
-
-      PetscInt rank;
-      MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
-      PetscPrintf(PETSC_COMM_SELF, "[%d] %d ---- %d\n", rank, edge->fbus, edge->tbus);
+      ierr = MatSetValue(Cf, edge->limitIdx, edge->internal_i, 1, INSERT_VALUES);CHKERRQ(ierr);
+      ierr = MatSetValue(Ct, edge->limitIdx, edge->internal_j, 1, INSERT_VALUES);CHKERRQ(ierr);
     }
   }
 
@@ -144,7 +148,7 @@ int main(int argc,char **argv)
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nCalculating Cost\n====================\n");CHKERRQ(ierr);
   ierr = calcCost(x, dmnet, baseMVA, nb, ng, &fun, &df, &d2f);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD, "Cost:%f\n", fun);
-
+  MatView(Ybus, PETSC_VIEWER_STDOUT_WORLD);
 
   Mat Lxx;
   ierr = makeSparse(&Lxx, xSize, xSize, 0, 0);CHKERRQ(ierr);
@@ -321,6 +325,18 @@ int main(int argc,char **argv)
     ierr = VecDestroy(&Lx);CHKERRQ(ierr);
 	  ierr = MatDestroy(&dh_zinv);CHKERRQ(ierr);
 
+    PetscViewer matOut;
+    PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/dg", FILE_MODE_WRITE, &matOut);
+    MatView(dg, matOut);
+    PetscViewerDestroy(&matOut);
+
+    PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/W", FILE_MODE_WRITE, &matOut);
+    MatView(W, matOut);
+    PetscViewerDestroy(&matOut);
+
+    PetscInt restart;
+    ierr = MatGetSize(W, &restart, NULL);CHKERRQ(ierr);
+    restart *= restart;
 
 
     Vec dxdlam;
@@ -330,7 +346,7 @@ int main(int argc,char **argv)
     KSP ksp;
     ierr = KSPCreate(PETSC_COMM_WORLD, &ksp);CHKERRQ(ierr);
     ierr = KSPSetOperators(ksp, W, W);CHKERRQ(ierr);
-
+    ierr = KSPGMRESSetRestart(ksp, restart);CHKERRQ(ierr);
     PC pc;
 
     ierr = KSPGetPC(ksp, &pc);CHKERRQ(ierr);
