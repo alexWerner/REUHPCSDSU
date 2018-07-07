@@ -92,7 +92,7 @@ PetscErrorCode PFReadMatPowerData(PFDATA *pf,char *filename)
       sscanf(line,"%d %d %lf %lf %lf %lf %d %lf %lf %lf",&bus_i,&ide,&Pd,&Qd,&gl,&bl,&area,&vm,&va,&basekV);
       Bus[busi].bus_i = bus_i; Bus[busi].ide = ide; Bus[busi].area = area;
       Bus[busi].gl = gl; Bus[busi].bl = bl;
-      PetscPrintf(PETSC_COMM_WORLD, "bl|%f\n", Bus[busi].bl);
+      //PetscPrintf(PETSC_COMM_WORLD, "bl|%f\n", Bus[busi].bl);
       Bus[busi].vm = vm; Bus[busi].va = va; Bus[busi].basekV = basekV;
       Bus[busi].internal_i = busi;
       busext2intmap[Bus[busi].bus_i] = busi;

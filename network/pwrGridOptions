@@ -3,5 +3,4 @@
 -ksp_gmres_restart 2000
 -ksp_converged_reason
 -sub_pc_factor_shift_type POSITIVE_DEFINITE
--ksp_monitor_singular_value :norms
 -objects_dump

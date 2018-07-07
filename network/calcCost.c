@@ -11,7 +11,7 @@ PetscErrorCode calcCost(Vec x, DM net, PetscScalar baseMVA, PetscInt nb, PetscIn
   ierr = VecGetSize(x, &xSize);CHKERRQ(ierr);
 
   //f = sum(x(11:15) .* gen_cost(:, COST) * baseMVA);
-  PetscInt n, vStart, vEnd;
+  PetscInt n = 3, vStart, vEnd;
   ierr = DMNetworkGetVertexRange(net, &vStart, &vEnd);CHKERRQ(ierr);
 
   PetscInt       key,kk,numComponents;
@@ -28,8 +28,9 @@ PetscErrorCode calcCost(Vec x, DM net, PetscScalar baseMVA, PetscInt nb, PetscIn
     }
   }
   ierr = MPI_Bcast(&n,1,MPIU_INT,0,PETSC_COMM_WORLD);CHKERRQ(ierr);
-
+//PetscPrintf(PETSC_COMM_WORLD, "end bcast\n");
   Vec cost[n];
+  //PetscPrintf(PETSC_COMM_WORLD, "n:%d\n", n);
   for(PetscInt i = 0; i < n; i++)
   {
     ierr = MakeVector(&cost[i], ng);CHKERRQ(ierr);
@@ -46,10 +47,11 @@ PetscErrorCode calcCost(Vec x, DM net, PetscScalar baseMVA, PetscInt nb, PetscIn
         }
       }
     }
+    //PetscPrintf(PETSC_COMM_WORLD, "assembly %d\n", i);
     ierr = VecAssemblyBegin(cost[i]);CHKERRQ(ierr);
     ierr = VecAssemblyEnd(cost[i]);CHKERRQ(ierr);
   }
-
+//PetscPrintf(PETSC_COMM_WORLD, "cost setup\n");
 
 
 
@@ -65,7 +67,7 @@ PetscErrorCode calcCost(Vec x, DM net, PetscScalar baseMVA, PetscInt nb, PetscIn
     ierr = VecDestroy(&xSub);CHKERRQ(ierr);
   }
 
-
+//PetscPrintf(PETSC_COMM_WORLD, "df\n");
   //df = [zeros(10,1 ); gen_cost(:, COST) / baseMVA; zeros(5, 1)];
   Vec dfCost;
   ierr = MakeVector(&dfCost, ng);CHKERRQ(ierr);
@@ -104,7 +106,7 @@ PetscErrorCode calcCost(Vec x, DM net, PetscScalar baseMVA, PetscInt nb, PetscIn
 
   ierr = VecDestroy(&dfCost);CHKERRQ(ierr);
 
-
+//PetscPrintf(PETSC_COMM_WORLD, "d2f\n");
   //Second derivative
   Vec d2fCost;
   ierr = MakeVector(&d2fCost, ng);CHKERRQ(ierr);
@@ -146,6 +148,6 @@ PetscErrorCode calcCost(Vec x, DM net, PetscScalar baseMVA, PetscInt nb, PetscIn
   {
     ierr = VecDestroy(&cost[i]);CHKERRQ(ierr);
   }
-
+//PetscPrintf(PETSC_COMM_WORLD, "done\n");
   PetscFunctionReturn(0);
 }

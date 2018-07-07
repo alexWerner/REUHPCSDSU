@@ -31,8 +31,10 @@ PetscErrorCode setupConstraints(DM net, PetscInt nb, PetscInt ng, Vec *x, Vec *x
       if (key == 1)
       {
         bus = (VERTEX_Power)(component);
-        ierr = VecSetValue(*x, bus->internal_i, bus->va, INSERT_VALUES);CHKERRQ(ierr);
-        ierr = VecSetValue(*x, bus->internal_i + nb, bus->vm, INSERT_VALUES);CHKERRQ(ierr);
+        ierr = VecSetValue(*x, bus->internal_i, 0, INSERT_VALUES);CHKERRQ(ierr);
+        ierr = VecSetValue(*x, bus->internal_i + nb, 1, INSERT_VALUES);CHKERRQ(ierr);
+        //ierr = VecSetValue(*x, bus->internal_i, bus->va, INSERT_VALUES);CHKERRQ(ierr);
+        //ierr = VecSetValue(*x, bus->internal_i + nb, bus->vm, INSERT_VALUES);CHKERRQ(ierr);
 
         if(bus->ide == 3)
         {
@@ -102,10 +104,10 @@ PetscErrorCode getLimitedLines(DM net, PetscInt nl, IS *il, PetscInt *nl2)
 
   ierr = ISCreateGeneral(PETSC_COMM_WORLD, eEnd - eStart, vals, PETSC_COPY_VALUES, il);CHKERRQ(ierr);
   PetscFree(vals);
-PetscPrintf(PETSC_COMM_WORLD, "A\n");
+
   ierr = ISCreateGeneral(PETSC_COMM_WORLD, 1, &negOne, PETSC_COPY_VALUES, &ilTemp);CHKERRQ(ierr);
   ierr = indexDifference(*il, ilTemp, il);CHKERRQ(ierr);
-PetscPrintf(PETSC_COMM_WORLD, "A\n");
+
   ierr = ISGetSize(*il, nl2);CHKERRQ(ierr);
 
   ierr = ISDestroy(&ilTemp);CHKERRQ(ierr);
@@ -125,7 +127,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
 
   PetscInt xSize = 2 * nb + 2 * ng;
 
-
+// VecView(x, PETSC_VIEWER_STDOUT_WORLD);
   Vec Pg, Qg, Vm, Va;
   ierr = getVecIndices(x, 0, nb, &Va);CHKERRQ(ierr);
   ierr = getVecIndices(x, nb, nb * 2, &Vm);CHKERRQ(ierr);
@@ -163,7 +165,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
       } else if (key == 2) //Cg
       {
         gen = (GEN)(component);
-        ierr = MatSetValue(CgT, gen->idx, gen->bus_i - 1, 1, INSERT_VALUES);CHKERRQ(ierr);
+        ierr = MatSetValue(CgT, gen->idx, gen->internal_i, 1, INSERT_VALUES);CHKERRQ(ierr);
       }
     }
   }
@@ -202,7 +204,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   ierr = VecExp(VaWork);CHKERRQ(ierr);
   ierr = VecPointwiseMult(V, Vm, VaWork);CHKERRQ(ierr);
   ierr = VecDestroy(&VaWork);CHKERRQ(ierr);
-
+// VecView(Vm, PETSC_VIEWER_STDOUT_WORLD);
+// VecView(Va, PETSC_VIEWER_STDOUT_WORLD);
 
   //mis = V .* conj(Ybus * V) - Sbus;
   Vec mis, conjYbusV;
@@ -370,12 +373,12 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   //diagV = sparse(1:n, 1:n, V, n, n);
   Mat diagV;
   ierr = makeDiagonalMat(&diagV, V, nb);CHKERRQ(ierr);
-
+// MatView(diagV, PETSC_VIEWER_STDOUT_WORLD);
 
   //diagIbus = sparse(1:n, 1:n, Ibus, n, n);
   Mat diagIbus;
   ierr = makeDiagonalMat(&diagIbus, Ibus, nb);CHKERRQ(ierr);
-
+// MatView(diagIbus, PETSC_VIEWER_STDOUT_WORLD);
 
   //diagVnorm = sparse(1:n, 1:n, V ./ abs(V), n, n);
   Mat diagVnorm;
@@ -387,7 +390,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   ierr = VecReciprocal(Vnorm);CHKERRQ(ierr);
   ierr = VecPointwiseMult(Vnorm, V, Vnorm);
   ierr = makeDiagonalMat(&diagVnorm, Vnorm, nb);CHKERRQ(ierr);
-
+// MatView(diagVnorm, PETSC_VIEWER_STDOUT_WORLD);
 
   //dSbus_dVm = diagV * conj(Ybus * diagVnorm) + conj(diagIbus) * diagVnorm;
   Mat dSbus_dVm, dSbus_dVmWork1, dSbus_dVmWork2, diagIbusConj;
@@ -417,18 +420,18 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   neg_Cg = Cg;
 
 
-  PetscViewer matOut;
-  PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/Ybus", FILE_MODE_WRITE, &matOut);
-  MatView(Ybus, matOut);
-  PetscViewerDestroy(&matOut);
-
-  PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/dSbus_dVa", FILE_MODE_WRITE, &matOut);
-  MatView(dSbus_dVa, matOut);
-  PetscViewerDestroy(&matOut);
-
-  PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/dSbus_dVm", FILE_MODE_WRITE, &matOut);
-  MatView(dSbus_dVm, matOut);
-  PetscViewerDestroy(&matOut);
+  // PetscViewer matOut;
+  // PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/Ybus", FILE_MODE_WRITE, &matOut);
+  // MatView(Ybus, matOut);
+  // PetscViewerDestroy(&matOut);
+  //
+  // PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/dSbus_dVa", FILE_MODE_WRITE, &matOut);
+  // MatView(dSbus_dVa, matOut);
+  // PetscViewerDestroy(&matOut);
+  //
+  // PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/dSbus_dVm", FILE_MODE_WRITE, &matOut);
+  // MatView(dSbus_dVm, matOut);
+  // PetscViewerDestroy(&matOut);
 
 
   //dgn = sparse(2*nb, n_var);
@@ -866,13 +869,13 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   ierr = MatTranspose(Ae, MAT_INITIAL_MATRIX, &AeT);CHKERRQ(ierr);
   ierr = matJoinMatWidth(dg, dgn, AeT);CHKERRQ(ierr);
 
-  PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/dgn", FILE_MODE_WRITE, &matOut);
-  MatView(dgn, matOut);
-  PetscViewerDestroy(&matOut);
-
-  PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/AeT", FILE_MODE_WRITE, &matOut);
-  MatView(AeT, matOut);
-  PetscViewerDestroy(&matOut);
+  // PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/dgn", FILE_MODE_WRITE, &matOut);
+  // MatView(dgn, matOut);
+  // PetscViewerDestroy(&matOut);
+  //
+  // PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/AeT", FILE_MODE_WRITE, &matOut);
+  // MatView(AeT, matOut);
+  // PetscViewerDestroy(&matOut);
 
   ierr = MatDestroy(&AeT);CHKERRQ(ierr);
   ierr = MatDestroy(&dgn);CHKERRQ(ierr);

@@ -31,14 +31,14 @@ int main(int argc,char **argv)
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nYbus\n====================\n");CHKERRQ(ierr);
   ierr = makeAdmMat(dmnet, baseMVA, nb, nl, &Yf, &Yt, &Ybus);CHKERRQ(ierr);
 
-  PetscViewer matOut;
-  PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/Yf", FILE_MODE_WRITE, &matOut);
-  MatView(Yf, matOut);
-  PetscViewerDestroy(&matOut);
-
-  PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/Yt", FILE_MODE_WRITE, &matOut);
-  MatView(Yt, matOut);
-  PetscViewerDestroy(&matOut);
+  // PetscViewer matOut;
+  // PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/Yf", FILE_MODE_WRITE, &matOut);
+  // MatView(Yf, matOut);
+  // PetscViewerDestroy(&matOut);
+  //
+  // PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/Yt", FILE_MODE_WRITE, &matOut);
+  // MatView(Yt, matOut);
+  // PetscViewerDestroy(&matOut);
 
   Vec x, xmin, xmax;
 
@@ -148,7 +148,7 @@ int main(int argc,char **argv)
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nCalculating Cost\n====================\n");CHKERRQ(ierr);
   ierr = calcCost(x, dmnet, baseMVA, nb, ng, &fun, &df, &d2f);CHKERRQ(ierr);
   ierr = PetscPrintf(PETSC_COMM_WORLD, "Cost:%f\n", fun);
-  MatView(Ybus, PETSC_VIEWER_STDOUT_WORLD);
+  // MatView(Ybus, PETSC_VIEWER_STDOUT_WORLD);
 
   Mat Lxx;
   ierr = makeSparse(&Lxx, xSize, xSize, 0, 0);CHKERRQ(ierr);
@@ -325,14 +325,14 @@ int main(int argc,char **argv)
     ierr = VecDestroy(&Lx);CHKERRQ(ierr);
 	  ierr = MatDestroy(&dh_zinv);CHKERRQ(ierr);
 
-    PetscViewer matOut;
-    PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/dg", FILE_MODE_WRITE, &matOut);
-    MatView(dg, matOut);
-    PetscViewerDestroy(&matOut);
-
-    PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/W", FILE_MODE_WRITE, &matOut);
-    MatView(W, matOut);
-    PetscViewerDestroy(&matOut);
+    // PetscViewer matOut;
+    // PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/dg", FILE_MODE_WRITE, &matOut);
+    // MatView(dg, matOut);
+    // PetscViewerDestroy(&matOut);
+    //
+    // PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/W", FILE_MODE_WRITE, &matOut);
+    // MatView(W, matOut);
+    // PetscViewerDestroy(&matOut);
 
     PetscInt restart;
     ierr = MatGetSize(W, &restart, NULL);CHKERRQ(ierr);

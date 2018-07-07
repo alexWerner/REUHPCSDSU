@@ -23,13 +23,13 @@ PetscErrorCode makeAdmMat(DM net, PetscScalar baseMVA, PetscInt nb, PetscInt nl,
 		ierr = DMNetworkGetComponent(net,i,0,NULL,(void**)&edge);CHKERRQ(ierr);
 
 
-		ierr = MatSetValue(Cf, edge->idx, edge->fbus - 1, 1, INSERT_VALUES);CHKERRQ(ierr);
-		ierr = MatSetValue(Ct, edge->idx, edge->tbus - 1, 1, INSERT_VALUES);CHKERRQ(ierr);
+		ierr = MatSetValue(Cf, edge->idx, edge->internal_i, 1, INSERT_VALUES);CHKERRQ(ierr);
+		ierr = MatSetValue(Ct, edge->idx, edge->internal_j, 1, INSERT_VALUES);CHKERRQ(ierr);
 
-		ierr = MatSetValue(*Yf, edge->idx, edge->fbus - 1, edge->yff, INSERT_VALUES);CHKERRQ(ierr);
-		ierr = MatSetValue(*Yf, edge->idx, edge->tbus - 1, edge->yft, INSERT_VALUES);CHKERRQ(ierr);
-		ierr = MatSetValue(*Yt, edge->idx, edge->fbus - 1, edge->ytf, INSERT_VALUES);CHKERRQ(ierr);
-		ierr = MatSetValue(*Yt, edge->idx, edge->tbus - 1, edge->ytt, INSERT_VALUES);CHKERRQ(ierr);
+		ierr = MatSetValue(*Yf, edge->idx, edge->internal_i, edge->yff, INSERT_VALUES);CHKERRQ(ierr);
+		ierr = MatSetValue(*Yf, edge->idx, edge->internal_j, edge->yft, INSERT_VALUES);CHKERRQ(ierr);
+		ierr = MatSetValue(*Yt, edge->idx, edge->internal_i, edge->ytf, INSERT_VALUES);CHKERRQ(ierr);
+		ierr = MatSetValue(*Yt, edge->idx, edge->internal_j, edge->ytt, INSERT_VALUES);CHKERRQ(ierr);
 	}
 
 	ierr = MatAssemblyBegin(Cf, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
