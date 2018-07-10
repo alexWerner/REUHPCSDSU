@@ -276,7 +276,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   {
     ierr = DMNetworkGetComponent(net,i,0,&key,(void**)&edge);CHKERRQ(ierr);
     if(edge->rateA != 0)
-      SfVals[j++] = edge->fbus - 1;
+      SfVals[j++] = edge->internal_i;
   }
 
   IS isFV;
@@ -308,7 +308,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   {
     ierr = DMNetworkGetComponent(net,i,0,&key,(void**)&edge);CHKERRQ(ierr);
     if(edge->rateA != 0)
-      StVals[j++] = edge->tbus - 1;
+      StVals[j++] = edge->internal_j;
   }
 
   IS isTV;

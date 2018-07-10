@@ -9,6 +9,8 @@
 int main(int argc,char **argv)
 {
   PetscScalar baseMVA = 100;
+  PetscReal norm=0, lastNorm=-1;
+  PetscReal tolerance = 0.00001;
   DM dmnet;
 
   PetscErrorCode ierr;
@@ -159,7 +161,9 @@ int main(int argc,char **argv)
 
   //Main Loop
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nEntering Main Loop\n====================\n");CHKERRQ(ierr);
-  for(PetscInt i = 0; i < 16; i++)
+  PetscInt i = 0;
+  while(PetscAbsScalar(norm-lastNorm) > tolerance)
+  //for(PetscInt i = 0; i < 16; i++)
   {
 
     //zinvdiag = sparse(1:niq, 1:niq, 1 ./ z, niq, niq);
@@ -554,6 +558,10 @@ int main(int argc,char **argv)
     calcFirstDerivative(x, Ybus, dmnet, il, Yf, Yt,
 	  nl2, nb, ng, nl, baseMVA, xmax, xmin, &h, &g, &dh, &dg, &gn, &hn, &dSf_dVa,
 	  &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
+
+    lastNorm = norm;
+    ierr = VecNorm(x, NORM_1, &norm);CHKERRQ(ierr);
+    i++;
   }
 
 
