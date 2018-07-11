@@ -219,6 +219,10 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   ierr = VecAXPY(mis, -1, Sbus);CHKERRQ(ierr);
   ierr = VecDestroy(&conjYbusV);CHKERRQ(ierr);
 
+  ierr = VecDestroy(&Sbusg);CHKERRQ(ierr);
+  ierr = VecDestroy(&Sload);CHKERRQ(ierr);
+  ierr = VecDestroy(&Sbus);CHKERRQ(ierr);
+
 
   //gn = [ real(mis); imag(mis)];
   ierr = MakeVector(gn, nb * 2);CHKERRQ(ierr);
@@ -403,6 +407,9 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   ierr = MatMatMult(diagV, dSbus_dVmWork2, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &dSbus_dVm);CHKERRQ(ierr);
   ierr = MatAXPY(dSbus_dVm, 1, dSbus_dVmWork1, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
 
+  ierr = MatDestroy(&dSbus_dVmWork1);CHKERRQ(ierr);
+  ierr = MatDestroy(&dSbus_dVmWork2);CHKERRQ(ierr);
+
 
   //dSbus_dVa = 1j * diagV * conj(diagIbus - Ybus * diagV);
   Mat dSbus_dVa, dSbus_dVaWork;
@@ -413,6 +420,9 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   ierr = MatMatMult(diagV, dSbus_dVaWork, MAT_INITIAL_MATRIX, PETSC_DEFAULT, &dSbus_dVa);CHKERRQ(ierr);
   ierr = MatScale(dSbus_dVa, PETSC_i);CHKERRQ(ierr);
 
+  ierr = MatDestroy(&diagIbus);CHKERRQ(ierr);
+  ierr = MatDestroy(&diagIbusConj);CHKERRQ(ierr);
+  ierr = MatDestroy(&dSbus_dVaWork);CHKERRQ(ierr);
 
   //neg_Cg = sparse(gen_data(:, GEN_BUS), 1:ng, -1, nb, ng);
   Mat neg_Cg;
@@ -449,6 +459,9 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   ierr = MatDuplicate(dSbus_dVa, MAT_COPY_VALUES, &imagVa);CHKERRQ(ierr);
   ierr = MatDuplicate(dSbus_dVm, MAT_COPY_VALUES, &realVm);CHKERRQ(ierr);
   ierr = MatDuplicate(dSbus_dVm, MAT_COPY_VALUES, &imagVm);CHKERRQ(ierr);
+
+  ierr = MatDestroy(&dSbus_dVm);CHKERRQ(ierr);
+  ierr = MatDestroy(&dSbus_dVa);CHKERRQ(ierr);
 
   ierr = MatRealPart(realVa);CHKERRQ(ierr);
   ierr = MatImaginaryPart(imagVa);CHKERRQ(ierr);
@@ -574,6 +587,15 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   ierr = dSMat(dSt_dVa, PETSC_i, -1, nl2, nb, diagIt, diagVt, V,     YtIl, isTV, diagV);
   ierr = dSMat(dSt_dVm, 1,        1, nl2, nb, diagIt, diagVt, Vnorm, YtIl, isTV, diagVnorm);
 
+  ierr = MatDestroy(&diagV);CHKERRQ(ierr);
+  ierr = MatDestroy(&diagVnorm);CHKERRQ(ierr);
+  ierr = MatDestroy(&diagVf);CHKERRQ(ierr);
+  ierr = MatDestroy(&diagVt);CHKERRQ(ierr);
+  ierr = MatDestroy(&diagIf);CHKERRQ(ierr);
+  ierr = MatDestroy(&diagIt);CHKERRQ(ierr);
+  ierr = MatDestroy(&YfIl);CHKERRQ(ierr);
+  ierr = MatDestroy(&YtIl);CHKERRQ(ierr);
+
 
   //Sf = V(f1) .* conj(If);
   //St = V(t1) .* conj(It);
@@ -620,6 +642,11 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   ierr = matRealPMatImag(&dAf_dVa, dAf_dPf, dAf_dQf, *dSf_dVa);CHKERRQ(ierr);
   ierr = matRealPMatImag(&dAt_dVm, dAt_dPt, dAt_dQt, *dSt_dVm);CHKERRQ(ierr);
   ierr = matRealPMatImag(&dAt_dVa, dAt_dPt, dAt_dQt, *dSt_dVa);CHKERRQ(ierr);
+
+  ierr = MatDestroy(&dAf_dPf);CHKERRQ(ierr);
+  ierr = MatDestroy(&dAf_dQf);CHKERRQ(ierr);
+  ierr = MatDestroy(&dAt_dPt);CHKERRQ(ierr);
+  ierr = MatDestroy(&dAt_dQt);CHKERRQ(ierr);
 
 
   //dhn = sparse(2*nl2, n_var);
@@ -886,34 +913,11 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
 
 
   //Cleanup
-  ierr = MatDestroy(&diagIbus);CHKERRQ(ierr);
-  ierr = MatDestroy(&dSbus_dVm);CHKERRQ(ierr);
-  ierr = MatDestroy(&dSbus_dVmWork1);CHKERRQ(ierr);
-  ierr = MatDestroy(&dSbus_dVmWork2);CHKERRQ(ierr);
-  ierr = MatDestroy(&dSbus_dVa);CHKERRQ(ierr);
-  ierr = MatDestroy(&dSbus_dVaWork);CHKERRQ(ierr);
-  ierr = MatDestroy(&diagIbusConj);CHKERRQ(ierr);
-  ierr = MatDestroy(&dSbus_dVa);CHKERRQ(ierr);
-  ierr = MatDestroy(&diagV);CHKERRQ(ierr);
-  ierr = MatDestroy(&diagVnorm);CHKERRQ(ierr);
-  ierr = MatDestroy(&dgn);CHKERRQ(ierr);
-  ierr = MatDestroy(&diagVf);CHKERRQ(ierr);
-  ierr = MatDestroy(&diagVt);CHKERRQ(ierr);
-  ierr = MatDestroy(&diagIf);CHKERRQ(ierr);
-  ierr = MatDestroy(&diagIt);CHKERRQ(ierr);
-  ierr = MatDestroy(&YfIl);CHKERRQ(ierr);
-  ierr = MatDestroy(&YtIl);CHKERRQ(ierr);
-  ierr = MatDestroy(&dAf_dPf);CHKERRQ(ierr);
-  ierr = MatDestroy(&dAf_dQf);CHKERRQ(ierr);
-  ierr = MatDestroy(&dAt_dPt);CHKERRQ(ierr);
-  ierr = MatDestroy(&dAt_dQt);CHKERRQ(ierr);
+
   ierr = MatDestroy(&Ae);CHKERRQ(ierr);
   ierr = MatDestroy(&Ai);CHKERRQ(ierr);
   ierr = VecDestroy(&bi);CHKERRQ(ierr);
   ierr = VecDestroy(&be);CHKERRQ(ierr);
-  ierr = VecDestroy(&Sbusg);CHKERRQ(ierr);
-  ierr = VecDestroy(&Sload);CHKERRQ(ierr);
-  ierr = VecDestroy(&Sbus);CHKERRQ(ierr);
   ierr = VecDestroy(&V);CHKERRQ(ierr);
   ierr = VecDestroy(&flow_max);CHKERRQ(ierr);
   ierr = VecDestroy(&Vnorm);CHKERRQ(ierr);
