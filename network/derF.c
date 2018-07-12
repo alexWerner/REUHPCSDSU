@@ -123,6 +123,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
 {
   PetscErrorCode ierr;
   PetscFunctionBegin;
+  PetscLogStagePush(stage1);
 
 
   PetscInt xSize = 2 * nb + 2 * ng;
@@ -443,7 +444,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   // MatView(dSbus_dVm, matOut);
   // PetscViewerDestroy(&matOut);
 
-
+  PetscLogStagePop();
+  PetscLogStagePush(stage3);
   //dgn = sparse(2*nb, n_var);
   //dgn(:, [1:5 6:10 11:15 16:20]) = [
   //    real([dSbus_dVa dSbus_dVm]) neg_Cg sparse(nb, ng);  %% P mismatch w.r.t Va, Vm, Pg, Qg
@@ -700,7 +702,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   ierr = MatDestroy(&dAt_dVm);CHKERRQ(ierr);
   ierr = MatDestroy(&dhnT);CHKERRQ(ierr);
 
-
+  PetscLogStagePop();
+  PetscLogStagePush(stage4);
   //AA = speye(length(x));
   Mat AA;
   Vec vec4nb;
@@ -852,6 +855,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   ierr = VecDestroy(&minIbx);CHKERRQ(ierr);
 
 
+  PetscLogStagePop();
+  PetscLogStagePush(stage5);
   //h = [hn; Ai * x - bi];          %% inequality constraints
   Vec Aix;
   ierr = MatCreateVecs(Ai, NULL, &Aix);CHKERRQ(ierr);
@@ -865,7 +870,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
 
   ierr = VecDestroy(&Aix);CHKERRQ(ierr);
 
-
+  PetscLogStagePop();
+  PetscLogStagePush(stage6);
   //g = [gn; Ae * x - be];          %% equality constraints
   Vec Aex;
   ierr = MatCreateVecs(Ae, NULL, &Aex);CHKERRQ(ierr);
@@ -879,23 +885,28 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
 
   ierr = VecDestroy(&Aex);CHKERRQ(ierr);
 
-
+  PetscLogStagePop();
+  PetscLogStagePush(stage7);
+  
+  PetscInt rows, cols;
   //dh = [dhn' Ai'];                 %% 1st derivative of inequalities
   //took transpose of dhn above
   Mat AiT;
   ierr = MatTranspose(Ai, MAT_INITIAL_MATRIX, &AiT);CHKERRQ(ierr);
   ierr = matJoinMatWidth(dh, dhn, AiT);CHKERRQ(ierr);
+  PetscLogStagePop();
   ierr = MatDestroy(&AiT);CHKERRQ(ierr);
   ierr = MatDestroy(&dhn);CHKERRQ(ierr);
 
-  ierr = remZeros(dh);CHKERRQ(ierr);
+  //ierr = remZeros(dh);CHKERRQ(ierr);
 
-
+  
+  PetscLogStagePush(stage8);
   //dg = [dgn Ae'];                 %% 1st derivative of equalities
   Mat AeT;
   ierr = MatTranspose(Ae, MAT_INITIAL_MATRIX, &AeT);CHKERRQ(ierr);
   ierr = matJoinMatWidth(dg, dgn, AeT);CHKERRQ(ierr);
-
+	PetscLogStagePop();
   // PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/dgn", FILE_MODE_WRITE, &matOut);
   // MatView(dgn, matOut);
   // PetscViewerDestroy(&matOut);
@@ -907,9 +918,12 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   ierr = MatDestroy(&AeT);CHKERRQ(ierr);
   ierr = MatDestroy(&dgn);CHKERRQ(ierr);
 
+  ierr = MatGetSize(*dh, &rows, &cols);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD, "dh: %d x %d\n", rows, cols);
+  ierr = MatGetSize(*dg, &rows, &cols);CHKERRQ(ierr);
+  PetscPrintf(PETSC_COMM_WORLD, "dg: %d x %d\n", rows, cols);
 
-
-  ierr = remZeros(dg);CHKERRQ(ierr);
+  //ierr = remZeros(dg);CHKERRQ(ierr);
 
 
   //Cleanup
@@ -940,6 +954,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   ierr = ISDestroy(&ilt);CHKERRQ(ierr);
   ierr = ISDestroy(&ibx);CHKERRQ(ierr);
 
+  
+
   PetscFunctionReturn(0);
 }
 
@@ -948,6 +964,7 @@ PetscErrorCode matJoinMatWidth(Mat *out, Mat left, Mat right)
 {
   PetscErrorCode ierr;
   PetscFunctionBegin;
+  PetscLogStagePush(stage9);
 
   PetscInt rows, lCol, rCol, min, max;
   ierr = MatGetSize(left, &rows, &lCol);CHKERRQ(ierr);
@@ -983,6 +1000,7 @@ PetscErrorCode matJoinMatWidth(Mat *out, Mat left, Mat right)
   PetscFree(colArrR);
   PetscFree(colArr2);
 
+  PetscLogStagePop();
   PetscFunctionReturn(0);
 }
 

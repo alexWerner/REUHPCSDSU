@@ -10,7 +10,6 @@ PetscErrorCode CreateNetwork(DM *networkdm, PetscInt *nb, PetscInt *ng, PetscInt
   PetscInt         *edges = NULL;
   PetscInt         i;
   UserCtx_Power    User;
-  PetscLogStage    stage1,stage2;
   PetscMPIInt      rank;
   PetscInt         eStart, eEnd, vStart, vEnd,j;
   PetscInt         genj,loadj;
@@ -31,8 +30,7 @@ PetscErrorCode CreateNetwork(DM *networkdm, PetscInt *nb, PetscInt *ng, PetscInt
     ierr = DMNetworkRegisterComponent(*networkdm,"genstruct",sizeof(struct _p_GEN),&User.compkey_gen);CHKERRQ(ierr);
     ierr = DMNetworkRegisterComponent(*networkdm,"loadstruct",sizeof(struct _p_LOAD),&User.compkey_load);CHKERRQ(ierr);
 
-    ierr = PetscLogStageRegister("Read Data",&stage1);CHKERRQ(ierr);
-    PetscLogStagePush(stage1);
+
     /* READ THE DATA */
     if (!crank)
     {
@@ -53,10 +51,8 @@ PetscErrorCode CreateNetwork(DM *networkdm, PetscInt *nb, PetscInt *ng, PetscInt
     /* If external option activated. Introduce error in jacobian */
     ierr = PetscOptionsHasName(NULL,NULL, "-jac_error", &User.jac_error);CHKERRQ(ierr);
 
-    PetscLogStagePop();
+
     ierr = MPI_Barrier(PETSC_COMM_WORLD);CHKERRQ(ierr);
-    ierr = PetscLogStageRegister("Create network",&stage2);CHKERRQ(ierr);
-    PetscLogStagePush(stage2);
     /* Set number of nodes/edges */
     ierr = DMNetworkSetSizes(*networkdm,1,0,&numVertices,&numEdges,&NumVertices,&NumEdges);CHKERRQ(ierr);
     /* Add edge connectivity */
@@ -125,7 +121,6 @@ PetscErrorCode CreateNetwork(DM *networkdm, PetscInt *nb, PetscInt *ng, PetscInt
     /* Distribute networkdm to multiple processes */
     ierr = DMNetworkDistribute(networkdm,0);CHKERRQ(ierr);
 
-    PetscLogStagePop();
     ierr = DMNetworkGetEdgeRange(*networkdm,&eStart,&eEnd);CHKERRQ(ierr);
     ierr = DMNetworkGetVertexRange(*networkdm,&vStart,&vEnd);CHKERRQ(ierr);
 

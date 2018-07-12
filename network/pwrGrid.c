@@ -6,10 +6,13 @@
 #include "util.h"
 #include "power.h"
 
+
+
 int main(int argc,char **argv)
 {
   PetscScalar baseMVA = 100;
-  PetscReal norm=0, lastNorm=-1;
+  PetscReal norm=100;
+  Vec lastX;
   PetscReal tolerance = 0.00001;
   DM dmnet;
 
@@ -19,6 +22,18 @@ int main(int argc,char **argv)
   ierr = PetscInitialize(&argc,&argv,"pwrGridOptions",NULL);CHKERRQ(ierr);
 
   PetscInt nb, nl, ng;
+
+
+
+  ierr = PetscLogStageRegister("First Derivative A", &stage1);CHKERRQ(ierr);
+  ierr = PetscLogStageRegister("First Derivative B", &stage3);CHKERRQ(ierr);
+  ierr = PetscLogStageRegister("First Derivative C", &stage4);CHKERRQ(ierr);
+  ierr = PetscLogStageRegister("First Derivative h", &stage5);CHKERRQ(ierr);
+  ierr = PetscLogStageRegister("First Derivative g", &stage6);CHKERRQ(ierr);
+  ierr = PetscLogStageRegister("First Derivative dh", &stage7);CHKERRQ(ierr);
+  ierr = PetscLogStageRegister("First Derivative dg", &stage8);CHKERRQ(ierr);
+  ierr = PetscLogStageRegister("Join Mats dh/dg", &stage9);CHKERRQ(ierr);
+  ierr = PetscLogStageRegister("Solving System", &stage2);CHKERRQ(ierr);
 
   ierr = CreateNetwork(&dmnet, &nb, &ng, &nl);CHKERRQ(ierr);
 
@@ -47,6 +62,7 @@ int main(int argc,char **argv)
 
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nCalculating Constraints\n====================\n");CHKERRQ(ierr);
   ierr = setupConstraints(dmnet, nb, ng, &x, &xmin, &xmax);CHKERRQ(ierr);
+  ierr = VecDuplicate(x, &lastX);CHKERRQ(ierr);
 
 
   IS il;
@@ -162,7 +178,7 @@ int main(int argc,char **argv)
   //Main Loop
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nEntering Main Loop\n====================\n");CHKERRQ(ierr);
   PetscInt i = 0;
-  while(PetscAbsScalar(norm-lastNorm) > tolerance)
+  while(norm > tolerance)
   //for(PetscInt i = 0; i < 16; i++)
   {
 
@@ -342,7 +358,7 @@ int main(int argc,char **argv)
     ierr = MatGetSize(W, &restart, NULL);CHKERRQ(ierr);
     restart *= restart;
 
-
+    PetscLogStagePush(stage2);
     Vec dxdlam;
     ierr = MatCreateVecs(W, &dxdlam, NULL);CHKERRQ(ierr);
     //dxdlam = W \ B;
@@ -361,7 +377,7 @@ int main(int argc,char **argv)
 
     ierr = KSPSolve(ksp, B, dxdlam);CHKERRQ(ierr);
     ierr = KSPDestroy(&ksp);CHKERRQ(ierr);
-
+    PetscLogStagePop();
 
     //nx = size(x,1);
     //This line is not needed, stored in xSize
@@ -559,8 +575,9 @@ int main(int argc,char **argv)
 	  nl2, nb, ng, nl, baseMVA, xmax, xmin, &h, &g, &dh, &dg, &gn, &hn, &dSf_dVa,
 	  &dSf_dVm, &dSt_dVm, &dSt_dVa, &Sf, &St);
 
-    lastNorm = norm;
-    ierr = VecNorm(x, NORM_1, &norm);CHKERRQ(ierr);
+    ierr = VecAYPX(lastX, -1, x);CHKERRQ(ierr);
+    ierr = VecNorm(lastX, NORM_INFINITY, &norm);CHKERRQ(ierr);
+    ierr = VecCopy(x, lastX);CHKERRQ(ierr);
     i++;
   }
 

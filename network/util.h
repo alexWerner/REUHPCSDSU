@@ -4,7 +4,7 @@
 #include "power.h"
 
 #define MAXLINE 1000
-
+PetscLogStage stage1, stage2, stage3, stage4, stage5, stage6, stage7, stage8, stage9;
 
 
 PetscErrorCode MakeVector(Vec *v, PetscInt n);
