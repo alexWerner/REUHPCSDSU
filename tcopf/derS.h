@@ -3,8 +3,8 @@
 #include "util.h"
 
 PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, Mat Ybus,
-  Mat Yf, Mat Yt, Mat Cf, Mat Ct, Vec Sf, Vec St, Mat d2f, Mat dSf_dVa,
-  Mat dSf_dVm, Mat dSt_dVm, Mat dSt_dVa, IS il, Mat y);
+  Mat Yf, Mat Yt, Mat Cf, Mat Ct, Vec *Sf, Vec *St, Mat d2f, Mat *dSf_dVa,
+  Mat *dSf_dVm, Mat *dSt_dVm, Mat *dSt_dVa, IS il, Mat *y);
 
 PetscErrorCode d2Sbus_dV2(Mat Ybus, Vec V, Vec lam, Mat *Gaa, Mat *Gav, Mat *Gva, Mat *Gvv);
 

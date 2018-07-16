@@ -6,6 +6,7 @@
 #define MAXLINE 1000
 PetscLogStage stage1, stage2, stage3, stage4, stage5, stage6, stage7, stage8, stage9;
 
+PetscInt timeSteps;
 
 PetscErrorCode MakeVector(Vec *v, PetscInt n);
 
@@ -30,6 +31,8 @@ PetscErrorCode getSubVector(Vec v, IS is, Vec *subV);
 PetscErrorCode stackNVectors(Vec *out, Vec *vecs, PetscInt nVecs, PetscInt nTotal);
 
 PetscErrorCode makeDiagonalMat(Mat *m, Vec vals, PetscInt dim);
+
+PetscErrorCode tileDiag(Mat m, Mat block, PetscInt ts);
 
 PetscInt* intArray2(PetscInt n1, PetscInt n2);
 

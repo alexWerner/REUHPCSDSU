@@ -164,7 +164,39 @@ PetscErrorCode makeDiagonalMat(Mat *m, Vec vals, PetscInt dim)
   PetscFunctionReturn(0);
 }
 
+PetscErrorCode tileDiag(Mat m, Mat block, PetscInt ts)
+{
+  PetscErrorCode ierr;
+  PetscFunctionBegin;
 
+  PetscInt rows, cols, min, max;
+  ierr = MatGetSize(block, &rows, &cols);CHKERRQ(ierr);
+
+  ierr = MatGetOwnershipRange(block, &min, &max);CHKERRQ(ierr);
+  PetscScalar *blockVals;
+  ierr = PetscMalloc1((max - min) * cols, &blockVals);CHKERRQ(ierr);
+
+  PetscInt *rowArr = intArray2(min, max);
+  PetscInt *colArr = intArray(cols);
+  PetscInt *rowArr2 = intArray2(min + rows * ts, max + rows * ts);
+  PetscInt *colArr2 = intArray2(cols * ts, cols * (ts + 1));
+
+  ierr = MatGetValues(block, max - min, rowArr, cols, colArr, blockVals);CHKERRQ(ierr);
+
+  ierr = addNonzeros(m, max - min, rowArr2, cols, colArr2, blockVals);CHKERRQ(ierr);
+
+  PetscFree(blockVals);
+
+  ierr = MatAssemblyBegin(m, MAT_FLUSH_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(m, MAT_FLUSH_ASSEMBLY);CHKERRQ(ierr);
+
+  PetscFree(rowArr);
+  PetscFree(colArr);
+  PetscFree(rowArr2);
+  PetscFree(colArr2);
+
+  PetscFunctionReturn(0);
+}
 
 PetscErrorCode boundedIS(Vec v, PetscInt minLim, PetscInt maxLim, IS *is)
 {

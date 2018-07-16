@@ -1,8 +1,8 @@
 #include "derS.h"
 
 PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, Mat Ybus,
-  Mat Yf, Mat Yt, Mat Cf, Mat Ct, Vec Sf, Vec St, Mat d2f, Mat dSf_dVa,
-  Mat dSf_dVm, Mat dSt_dVm, Mat dSt_dVa, IS il, Mat y)
+  Mat Yf, Mat Yt, Mat Cf, Mat Ct, Vec *Sf, Vec *St, Mat d2f, Mat *dSf_dVa,
+  Mat *dSf_dVm, Mat *dSt_dVm, Mat *dSt_dVa, IS il, Mat *y)
 {
   PetscErrorCode ierr;
   PetscFunctionBegin;
@@ -10,135 +10,113 @@ PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, Mat Ybus,
   PetscInt nb;
   ierr = MatGetSize(Ybus, &nb, NULL);CHKERRQ(ierr);
 
-
-  //Vm = x(6:10, :);
-  //Va = x(1:5, :);
-  //V = Vm .* exp(1j * Va);
-  Vec Vm, Va;
-  IS VmIs, VaIs;
-  ierr = boundedIS(x, 0, nb, &VaIs);CHKERRQ(ierr);
-  ierr = boundedIS(x, nb, nb * 2, &VmIs);CHKERRQ(ierr);
-
-  ierr = getSubVector(x, VaIs, &Va);CHKERRQ(ierr);
-  ierr = getSubVector(x, VmIs, &Vm);CHKERRQ(ierr);
-
-  Vec V, VaWork, VmWork;
-  ierr = MakeVector(&V, nb);CHKERRQ(ierr);
-  ierr = restructureVec(Va, &VaWork);CHKERRQ(ierr);
-  ierr = restructureVec(Vm, &VmWork);CHKERRQ(ierr);
-
-  ierr = VecScale(VaWork, PETSC_i);CHKERRQ(ierr);
-  ierr = VecExp(VaWork);CHKERRQ(ierr);
-  ierr = VecPointwiseMult(V, VmWork, VaWork);CHKERRQ(ierr);
-  ierr = VecDestroy(&VaWork);CHKERRQ(ierr);
-  ierr = VecDestroy(&VmWork);CHKERRQ(ierr);
-  ierr = ISDestroy(&VmIs);CHKERRQ(ierr);
-  ierr = ISDestroy(&VaIs);CHKERRQ(ierr);
-
-
-  //lamP = lam(1:5);
-  //lamQ = lam(6:10);
-  Vec lamP, lamQ;
-  Vec lamPa, lamQa;
-  IS pIs, qIs;
-  ierr = boundedIS(lam, 0, nb, &pIs);CHKERRQ(ierr);
-  ierr = boundedIS(lam, nb, nb * 2, &qIs);CHKERRQ(ierr);
-
-  ierr = getSubVector(lam, pIs, &lamPa);CHKERRQ(ierr);
-  ierr = getSubVector(lam, qIs, &lamQa);CHKERRQ(ierr);
-  ierr = ISDestroy(&pIs);CHKERRQ(ierr);
-  ierr = ISDestroy(&qIs);CHKERRQ(ierr);
-
-  ierr = restructureVec(lamPa, &lamP);CHKERRQ(ierr);
-  ierr = restructureVec(lamQa, &lamQ);CHKERRQ(ierr);
-  ierr = VecDestroy(&lamPa);CHKERRQ(ierr);
-  ierr = VecDestroy(&lamQa);CHKERRQ(ierr);
-
-
-  //nxtra = length(x) - 2 * nb;
-  //modifying this line to just get size of x
-  PetscInt xSize;
+  PetscInt xSize, lamSize, muSize;
   ierr = VecGetSize(x, &xSize);CHKERRQ(ierr);
+  ierr = VecGetSize(lam, &lamSize);CHKERRQ(ierr);
+  ierr = VecGetSize(mu, &muSize);CHKERRQ(ierr);
+
+  xSize /= timeSteps;
+  lamSize /= timeSteps;
+  muSize /= timeSteps;
+
+  if(y != NULL)
+    ierr = MatDestroy(y);CHKERRQ(ierr);
+  ierr = makeSparse(y, xSize * timeSteps, xSize * timeSteps, xSize, xSize);CHKERRQ(ierr);
+
+  for(int ts = 0; ts < timeSteps; ts++)
+  {
+
+    //Vm = x(6:10, :);
+    //Va = x(1:5, :);
+    //V = Vm .* exp(1j * Va);
+    Vec Vm, Va;
+
+    ierr = getVecIndices(x, xSize * ts, nb + xSize * ts, &Va);CHKERRQ(ierr);
+    ierr = getVecIndices(x, nb + xSize * ts, nb * 2 + xSize * ts, &Vm);CHKERRQ(ierr);
+
+    Vec V;
+    ierr = MakeVector(&V, nb);CHKERRQ(ierr);
+
+    ierr = VecScale(Va, PETSC_i);CHKERRQ(ierr);
+    ierr = VecExp(Va);CHKERRQ(ierr);
+    ierr = VecPointwiseMult(V, Vm, Va);CHKERRQ(ierr);
+    ierr = VecDestroy(&Va);CHKERRQ(ierr);
+    ierr = VecDestroy(&Vm);CHKERRQ(ierr);
 
 
-  //[Gpaa, Gpav, Gpva, Gpvv] = d2Sbus_dV2(Ybus, V, lamP);
-  Mat Gpaa, Gpav, Gpva, Gpvv;
-  ierr = d2Sbus_dV2(Ybus, V, lamP, &Gpaa, &Gpav, &Gpva, &Gpvv);CHKERRQ(ierr);
-
-  //[Gqaa, Gqav, Gqva, Gqvv] = d2Sbus_dV2(Ybus, V, lamQ);
-  Mat Gqaa, Gqav, Gqva, Gqvv;
-  ierr = d2Sbus_dV2(Ybus, V, lamQ, &Gqaa, &Gqav, &Gqva, &Gqvv);CHKERRQ(ierr);
+    //lamP = lam(1:5);
+    //lamQ = lam(6:10);
+    Vec lamP, lamQ;
+    ierr = getVecIndices(lam, lamSize * ts, nb + lamSize * ts, &lamP);CHKERRQ(ierr);
+    ierr = getVecIndices(lam, nb + lamSize * ts, nb * 2 + lamSize * ts, &lamQ);CHKERRQ(ierr);
 
 
-  //d2G = [
-  //  real([Gpaa Gpav; Gpva Gpvv]) + imag([Gqaa Gqav; Gqva Gqvv]) sparse(2*nb, nxtra);
-  //  sparse(nxtra, 2*nb + nxtra)
-  //];
-  Mat d2G;
-  ierr = makeSparse(&d2G, xSize, xSize, xSize, xSize);CHKERRQ(ierr);
+    //[Gpaa, Gpav, Gpva, Gpvv] = d2Sbus_dV2(Ybus, V, lamP);
+    Mat Gpaa, Gpav, Gpva, Gpvv;
+    ierr = d2Sbus_dV2(Ybus, V, lamP, &Gpaa, &Gpav, &Gpva, &Gpvv);CHKERRQ(ierr);
 
-  Mat Gp, Gq;
-  ierr = makeSparse(&Gp, 2 * nb,  2 * nb, 2 * nb, 2 * nb);CHKERRQ(ierr);
-  ierr = makeSparse(&Gq, 2 * nb,  2 * nb, 2 * nb, 2 * nb);CHKERRQ(ierr);
+    //[Gqaa, Gqav, Gqva, Gqvv] = d2Sbus_dV2(Ybus, V, lamQ);
+    Mat Gqaa, Gqav, Gqva, Gqvv;
+    ierr = d2Sbus_dV2(Ybus, V, lamQ, &Gqaa, &Gqav, &Gqva, &Gqvv);CHKERRQ(ierr);
 
-  Mat gp[4] = {Gpaa, Gpav, Gpva, Gpvv};
-  Mat gq[4] = {Gqaa, Gqav, Gqva, Gqvv};
-  ierr = combine4Matrices(Gp, gp, nb);CHKERRQ(ierr);
-  ierr = combine4Matrices(Gq, gq, nb);CHKERRQ(ierr);
 
-  ierr = MatRealPart(Gp);CHKERRQ(ierr);
-  ierr = MatImaginaryPart(Gq);CHKERRQ(ierr);
+    //d2G = [
+    //  real([Gpaa Gpav; Gpva Gpvv]) + imag([Gqaa Gqav; Gqva Gqvv]) sparse(2*nb, nxtra);
+    //  sparse(nxtra, 2*nb + nxtra)
+    //];
+    Mat d2G;
+    ierr = makeSparse(&d2G, xSize, xSize, xSize, xSize);CHKERRQ(ierr);
 
-  ierr = MatAXPY(Gp, 1, Gq, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
+    Mat Gp, Gq;
+    ierr = makeSparse(&Gp, 2 * nb,  2 * nb, 2 * nb, 2 * nb);CHKERRQ(ierr);
+    ierr = makeSparse(&Gq, 2 * nb,  2 * nb, 2 * nb, 2 * nb);CHKERRQ(ierr);
 
-  PetscInt max, min;
-  ierr = MatGetOwnershipRange(Gp, &min, &max);CHKERRQ(ierr);
-  PetscInt *rowsArr = intArray2(min, max);
+    Mat gp[4] = {Gpaa, Gpav, Gpva, Gpvv};
+    Mat gq[4] = {Gqaa, Gqav, Gqva, Gqvv};
+    ierr = combine4Matrices(Gp, gp, nb);CHKERRQ(ierr);
+    ierr = combine4Matrices(Gq, gq, nb);CHKERRQ(ierr);
 
-  PetscScalar *arr;
-  ierr = PetscMalloc1((max - min) * nb * 2, &arr);CHKERRQ(ierr);
-  PetscInt *nbArr = intArray2(0, nb * 2);
+    ierr = MatRealPart(Gp);CHKERRQ(ierr);
+    ierr = MatImaginaryPart(Gq);CHKERRQ(ierr);
 
-  ierr = MatGetValues(Gp, max - min, rowsArr, nb * 2, nbArr, arr);CHKERRQ(ierr);
-  ierr = addNonzeros(d2G, max - min, rowsArr, nb * 2, nbArr, arr);CHKERRQ(ierr);
+    ierr = MatAXPY(Gp, 1, Gq, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
 
-  PetscFree(rowsArr);
-  PetscFree(arr);
-  PetscFree(nbArr);
+    PetscInt max, min;
+    ierr = MatGetOwnershipRange(Gp, &min, &max);CHKERRQ(ierr);
+    PetscInt *rowsArr = intArray2(min, max);
 
-  ierr = MatAssemblyBegin(d2G, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatAssemblyEnd(d2G, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  ierr = MatDestroy(&Gp);CHKERRQ(ierr);
-  ierr = MatDestroy(&Gq);CHKERRQ(ierr);
+    PetscScalar *arr;
+    ierr = PetscMalloc1((max - min) * nb * 2, &arr);CHKERRQ(ierr);
+    PetscInt *nbArr = intArray2(0, nb * 2);
 
-  //muF = mu(1:2);
-  //muT = mu(3:4);
-  //il = [1,6];
-  //Pass il in as a parameter, then use to get parts of mu
-  PetscInt nl2;
-  ierr = ISGetSize(il, &nl2);CHKERRQ(ierr);
+    ierr = MatGetValues(Gp, max - min, rowsArr, nb * 2, nbArr, arr);CHKERRQ(ierr);
+    ierr = addNonzeros(d2G, max - min, rowsArr, nb * 2, nbArr, arr);CHKERRQ(ierr);
 
-  Vec muF, muT;
-  Vec muFa, muTa;
-  IS muFIs, muTIs;
-  ierr = boundedIS(mu, 0, nl2, &muFIs);CHKERRQ(ierr);
-  ierr = boundedIS(mu, nl2, nl2 * 2, &muTIs);CHKERRQ(ierr);
+    PetscFree(rowsArr);
+    PetscFree(arr);
+    PetscFree(nbArr);
 
-  ierr = getSubVector(mu, muFIs, &muFa);CHKERRQ(ierr);
-  ierr = getSubVector(mu, muTIs, &muTa);CHKERRQ(ierr);
-  ierr = ISDestroy(&muFIs);CHKERRQ(ierr);
-  ierr = ISDestroy(&muTIs);CHKERRQ(ierr);
+    ierr = MatAssemblyBegin(d2G, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+    ierr = MatAssemblyEnd(d2G, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+    ierr = MatDestroy(&Gp);CHKERRQ(ierr);
+    ierr = MatDestroy(&Gq);CHKERRQ(ierr);
 
-  ierr = restructureVec(muFa, &muF);CHKERRQ(ierr);
-  ierr = restructureVec(muTa, &muT);CHKERRQ(ierr);
-  ierr = VecDestroy(&muFa);CHKERRQ(ierr);
-  ierr = VecDestroy(&muTa);CHKERRQ(ierr);
+    //muF = mu(1:2);
+    //muT = mu(3:4);
+    //il = [1,6];
+    //Pass il in as a parameter, then use to get parts of mu
+    PetscInt nl2;
+    ierr = ISGetSize(il, &nl2);CHKERRQ(ierr);
+
+    Vec muF, muT;
+    ierr = getVecIndices(mu, muSize * ts, nl2 + muSize * ts, &muF);CHKERRQ(ierr);
+    ierr = getVecIndices(mu, nl2 + muSize * ts, nl2 * 2  + muSize * ts, &muT);CHKERRQ(ierr);
 
   //[Hfaa, Hfav, Hfva, Hfvv] = d2ASbr_dV2(dSf_dVa, dSf_dVm, Sf, Cf, Yf(il,:), V, muF);
   Mat Hfaa, Hfav, Hfva, Hfvv;
   Mat YfIl;
   ierr = MatCreateSubMatrix(Yf, il, NULL, MAT_INITIAL_MATRIX, &YfIl);CHKERRQ(ierr);
-  ierr = d2ASbr_dV2(dSf_dVa, dSf_dVm, Sf, Cf, YfIl, V, muF, &Hfaa, &Hfav, &Hfva, &Hfvv);CHKERRQ(ierr);
+  ierr = d2ASbr_dV2(dSf_dVa[ts], dSf_dVm[ts], Sf[ts], Cf, YfIl, V, muF, &Hfaa, &Hfav, &Hfva, &Hfvv);CHKERRQ(ierr);
   ierr = VecDestroy(&muF);CHKERRQ(ierr);
   ierr = MatDestroy(&YfIl);CHKERRQ(ierr);
 
@@ -147,7 +125,7 @@ PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, Mat Ybus,
   Mat Htaa, Htav, Htva, Htvv;
   Mat YtIl;
   ierr = MatCreateSubMatrix(Yt, il, NULL, MAT_INITIAL_MATRIX, &YtIl);CHKERRQ(ierr);
-  ierr = d2ASbr_dV2(dSt_dVa, dSt_dVm, St, Ct, YtIl, V, muT, &Htaa, &Htav, &Htva, &Htvv);CHKERRQ(ierr);
+  ierr = d2ASbr_dV2(dSt_dVa[ts], dSt_dVm[ts], St[ts], Ct, YtIl, V, muT, &Htaa, &Htav, &Htva, &Htvv);CHKERRQ(ierr);
   ierr = VecDestroy(&muT);CHKERRQ(ierr);
   ierr = MatDestroy(&YtIl);CHKERRQ(ierr);
 
@@ -195,12 +173,12 @@ PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, Mat Ybus,
   ierr = MatDestroy(&Htav);CHKERRQ(ierr);
   ierr = MatDestroy(&Htvv);CHKERRQ(ierr);
 
-  ierr = MatZeroEntries(y);
-  ierr = MatAXPY(y, 1, d2H, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
-  ierr = MatAXPY(y, 1, d2G, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
-  ierr = MatAXPY(y, 1, d2f, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
 
+  ierr = MatAXPY(d2G, 1, d2H, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
 
+  
+  ierr = tileDiag(*y, d2G, ts);CHKERRQ(ierr);
+  
 
   ierr = MatDestroy(&Gpaa);CHKERRQ(ierr);
   ierr = MatDestroy(&Gpav);CHKERRQ(ierr);
@@ -217,6 +195,13 @@ PetscErrorCode calcSecondDerivative(Vec x, Vec lam, Vec mu, Mat Ybus,
   ierr = VecDestroy(&Vm);CHKERRQ(ierr);
   ierr = VecDestroy(&Va);CHKERRQ(ierr);
   ierr = VecDestroy(&V);CHKERRQ(ierr);
+
+  }
+
+  ierr = MatAssemblyBegin(*y, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(*y, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+  ierr = MatAXPY(*y, 1, d2f, DIFFERENT_NONZERO_PATTERN);CHKERRQ(ierr);
 
   return ierr;
 }
