@@ -130,7 +130,7 @@ PetscErrorCode getLimitedLines(DM net, PetscInt nl, IS *il, PetscInt *nl2)
 //Comparable to gh_fcn1 in matlab
 PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
                                    Mat Yt, PetscInt nl2, PetscInt nb, PetscInt ng, PetscInt nl, PetscScalar baseMVA, Vec xmax, Vec xmin,
-                                   Vec *h, Vec *g, Mat *dh, Mat *dg, Vec *gn, Vec *hn,
+                                   Mat loadP, Mat loadQ, Vec *h, Vec *g, Mat *dh, Mat *dg, Vec *gn, Vec *hn,
                                    Mat *dSf_dVa, Mat *dSf_dVm, Mat *dSt_dVm, Mat *dSt_dVa, Vec *Sf, Vec *St)
 {
   PetscErrorCode ierr;
@@ -143,6 +143,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   ierr = MakeVector(hn, nl2 * 2 * timeSteps);CHKERRQ(ierr);
 
   Mat dhPre;
+  Vec hPre;
 
   for (int ts = 0; ts < timeSteps; ts++)
   {
@@ -169,12 +170,24 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
     PetscInt vStart, vEnd;
     ierr = DMNetworkGetVertexRange(net, &vStart, &vEnd);CHKERRQ(ierr);
 
+
+    Vec Sload, SloadQ;
+    ierr = MatCreateVecs(loadP, NULL, &Sload);CHKERRQ(ierr);
+    ierr = MatCreateVecs(loadQ, NULL, &SloadQ);CHKERRQ(ierr);
+    ierr = MatGetColumnVector(loadP, Sload, ts);CHKERRQ(ierr);
+    ierr = MatGetColumnVector(loadQ, SloadQ, ts);CHKERRQ(ierr);
+
+    ierr = VecAXPY(Sload, PETSC_i, SloadQ);CHKERRQ(ierr);
+    ierr = VecDestroy(&SloadQ);CHKERRQ(ierr);
+    ierr = VecScale(Sload, 1/baseMVA);CHKERRQ(ierr);
+
+
+
     PetscInt key, kk, numComponents;
     GEN gen;
-    LOAD load;
     void *component;
-    Vec Sload;
-    ierr = MakeVector(&Sload, nb);CHKERRQ(ierr);
+    
+    //ierr = MakeVector(&Sload, nb);CHKERRQ(ierr);
 
     for (PetscInt i = vStart; i < vEnd; i++)
     {
@@ -182,12 +195,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
       for (kk = 0; kk < numComponents; kk++)
       {
         ierr = DMNetworkGetComponent(net, i, kk, &key, &component);CHKERRQ(ierr);
-        if (key == 3) //Sload
-        {
-          load = (LOAD)(component);
-          ierr = VecSetValue(Sload, load->internal_i, (load->pl + PETSC_i * load->ql) / baseMVA, INSERT_VALUES);CHKERRQ(ierr);
-        }
-        else if (key == 2) //Cg
+        if (key == 2) //Cg
         {
           gen = (GEN)(component);
           ierr = MatSetValue(CgT, gen->idx, gen->internal_i, 1, INSERT_VALUES);CHKERRQ(ierr);
@@ -195,9 +203,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
       }
     }
     ierr = MatAssemblyBegin(CgT, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-    ierr = VecAssemblyBegin(Sload);CHKERRQ(ierr);
     ierr = MatAssemblyEnd(CgT, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-    ierr = VecAssemblyEnd(Sload);CHKERRQ(ierr);
 
     ierr = MatTranspose(CgT, MAT_INITIAL_MATRIX, &Cg);CHKERRQ(ierr);
     ierr = MatDestroy(&CgT);CHKERRQ(ierr);
@@ -265,6 +271,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
 
     ierr = VecAssemblyBegin(gnIt);CHKERRQ(ierr);
     ierr = VecAssemblyEnd(gnIt);CHKERRQ(ierr);
+
+    //VecView(gnIt, PETSC_VIEWER_STDOUT_WORLD);
 
     ierr = VecAssemblyBegin(*gn);CHKERRQ(ierr);
     ierr = VecAssemblyEnd(*gn);CHKERRQ(ierr);
@@ -869,8 +877,9 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
     ierr = VecGetSize(hnIt, &hnN);CHKERRQ(ierr);
     ierr = stackNVectors(&hIt, hVecs, 2, hnN + iltN + igtN + 2 * ibxN);CHKERRQ(ierr);
 
+
     if(ts == 0)
-      ierr = MakeVector(h, (hnN + iltN + igtN + 2 * ibxN) * timeSteps);CHKERRQ(ierr);
+      ierr = MakeVector(&hPre, (hnN + iltN + igtN + 2 * ibxN) * timeSteps);CHKERRQ(ierr);
 
 
     ierr = VecGetOwnershipRange(hIt, &min, &max);CHKERRQ(ierr);
@@ -879,13 +888,13 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
     PetscScalar *hVals;
     ierr = PetscMalloc1(max - min, &hVals);CHKERRQ(ierr);
     ierr = VecGetValues(hIt, max - min, hInd, hVals);CHKERRQ(ierr);
-    ierr = VecSetValues(*h, max - min, hGInd, hVals, INSERT_VALUES);CHKERRQ(ierr);
+    ierr = VecSetValues(hPre, max - min, hGInd, hVals, INSERT_VALUES);CHKERRQ(ierr);
     ierr = PetscFree(hVals);CHKERRQ(ierr);
     ierr = PetscFree(hInd);CHKERRQ(ierr);
     ierr = PetscFree(hGInd);CHKERRQ(ierr);
 
-    ierr = VecAssemblyBegin(*h);CHKERRQ(ierr);
-    ierr = VecAssemblyEnd(*h);CHKERRQ(ierr);
+    ierr = VecAssemblyBegin(hPre);CHKERRQ(ierr);
+    ierr = VecAssemblyEnd(hPre);CHKERRQ(ierr);
 
     ierr = VecDestroy(&Aix);CHKERRQ(ierr);
 
@@ -896,6 +905,8 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
     ierr = MatCreateVecs(Ae, NULL, &Aex);CHKERRQ(ierr);
     ierr = MatMult(Ae, xIt, Aex);CHKERRQ(ierr);
     ierr = VecAXPY(Aex, -1, be);CHKERRQ(ierr);
+
+    //VecView(gnIt, PETSC_VIEWER_STDOUT_WORLD);
 
     Vec gVecs[2] = {gnIt, Aex};
     PetscInt gnN;
@@ -1019,8 +1030,66 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   ierr = MatAssemblyEnd(*dg, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(dhPre, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
 
+  //TCOPF Constraint
 
-  *dh = dhPre;
+  Mat Afirst, Asecond;
+  PetscInt numRows = (timeSteps - 1) * ng;
+
+  ierr = VecGetSize(x, &xSize);CHKERRQ(ierr);
+  ierr = makeSparse(&Afirst, numRows, xSize, 2, 2);CHKERRQ(ierr);
+  for(PetscInt i = 0; i < numRows; i++)
+  {
+    ierr = MatSetValue(Afirst, (i % ng) * (timeSteps - 1) + i / ng, 2 * nb + (i % ng) + xSize / timeSteps * (i / ng), 1, INSERT_VALUES);CHKERRQ(ierr);
+    ierr = MatSetValue(Afirst, (i % ng) * (timeSteps - 1) + i / ng, 2 * nb + (i % ng) + xSize / timeSteps * (i / ng + 1), -1, INSERT_VALUES);CHKERRQ(ierr);
+  }
+  ierr = MatAssemblyBegin(Afirst, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+  ierr = MatAssemblyEnd(Afirst, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
+
+  ierr = MatDuplicate(Afirst, MAT_COPY_VALUES, &Asecond);CHKERRQ(ierr);
+  ierr = MatScale(Asecond, -1);CHKERRQ(ierr);
+
+  Vec bfs;
+  ierr = MakeVector(&bfs, numRows);CHKERRQ(ierr);
+  
+  //Potentially read in ramp rates, but none of the cases have any data
+  ierr = VecSet(bfs, 1);CHKERRQ(ierr);
+
+  Vec Afx, Asx;
+  ierr = MatCreateVecs(Afirst, NULL, &Afx);CHKERRQ(ierr);
+  ierr = MatMult(Afirst, x, Afx);CHKERRQ(ierr);
+  ierr = VecAXPY(Afx, -1, bfs);CHKERRQ(ierr);
+
+  ierr = MatCreateVecs(Asecond, NULL, &Asx);CHKERRQ(ierr);
+  ierr = MatMult(Asecond, x, Asx);CHKERRQ(ierr);
+  ierr = VecAXPY(Asx, -1, bfs);CHKERRQ(ierr);
+
+  PetscInt hSize;
+  ierr = VecGetSize(hPre, &hSize);CHKERRQ(ierr);
+  Vec hFinalVecs[3] = {hPre, Afx, Asx};
+  ierr = stackNVectors(h, hFinalVecs, 3, hSize + numRows * 2);CHKERRQ(ierr);
+
+  ierr = VecDestroy(&Afx);CHKERRQ(ierr);
+  ierr = VecDestroy(&Asx);CHKERRQ(ierr);
+
+
+
+
+
+  Mat AfirstT, AsecondT;
+  ierr = MatTranspose(Afirst, MAT_INITIAL_MATRIX, &AfirstT);CHKERRQ(ierr);
+  ierr = MatTranspose(Asecond, MAT_INITIAL_MATRIX, &AsecondT);CHKERRQ(ierr);
+
+  Mat Aboth;
+  ierr = matJoinMatWidth(&Aboth, AfirstT, AsecondT);CHKERRQ(ierr);
+  ierr = matJoinMatWidth(dh, dhPre, Aboth);CHKERRQ(ierr);
+
+  ierr = MatDestroy(&Afirst);CHKERRQ(ierr);
+  ierr = MatDestroy(&Asecond);CHKERRQ(ierr);
+  ierr = MatDestroy(&AfirstT);CHKERRQ(ierr);
+  ierr = MatDestroy(&AsecondT);CHKERRQ(ierr);
+  ierr = MatDestroy(&dhPre);CHKERRQ(ierr);
+  ierr = VecDestroy(&bfs);CHKERRQ(ierr);
+  ierr = VecDestroy(&hPre);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }

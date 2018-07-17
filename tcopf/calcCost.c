@@ -21,11 +21,16 @@ PetscErrorCode calcCost(Vec x, DM net, PetscScalar baseMVA, PetscInt nb, PetscIn
   
 
   PetscInt n = 3, vStart, vEnd;
-    ierr = DMNetworkGetVertexRange(net, &vStart, &vEnd);CHKERRQ(ierr);
-
-    PetscInt       key,kk,numComponents;
+  PetscInt rank;
+  PetscInt       key,kk,numComponents;
     GEN            gen;
     void * component;
+  MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+
+  ierr = DMNetworkGetVertexRange(net, &vStart, &vEnd);CHKERRQ(ierr);
+  if(rank == 0)
+  {
+    
     ierr = DMNetworkGetNumComponents(net,vStart,&numComponents);CHKERRQ(ierr);
     for (kk=0; kk < numComponents; kk++)
     {
@@ -36,6 +41,8 @@ PetscErrorCode calcCost(Vec x, DM net, PetscScalar baseMVA, PetscInt nb, PetscIn
         n = gen->ncost;
       }
     }
+  }
+    
     ierr = MPI_Bcast(&n,1,MPIU_INT,0,PETSC_COMM_WORLD);CHKERRQ(ierr);
     //PetscPrintf(PETSC_COMM_WORLD, "end bcast\n");
     Vec cost[n];

@@ -8,7 +8,7 @@ PetscErrorCode getLimitedLines(DM net, PetscInt nl, IS *il, PetscInt *nl2);
 
 PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
   Mat Yt, PetscInt nl2, PetscInt nb, PetscInt ng, PetscInt nl, PetscScalar baseMVA, Vec xmax, Vec xmin,
-  Vec *h, Vec *g, Mat *dh, Mat *dg, Vec *gn, Vec *hn,
+  Mat loadP, Mat loadQ, Vec *h, Vec *g, Mat *dh, Mat *dg, Vec *gn, Vec *hn,
   Mat * dSf_dVa, Mat *dSf_dVm, Mat *dSt_dVm, Mat *dSt_dVa, Vec *Sf, Vec *St);
 
 PetscErrorCode matJoinMatWidth(Mat *out, Mat left, Mat right);

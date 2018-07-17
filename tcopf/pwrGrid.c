@@ -14,7 +14,7 @@ int main(int argc,char **argv)
   PetscReal norm=100;
   Vec lastX;
   PetscReal tolerance = 0.00001;
-  timeSteps = 2;
+  //timeSteps = 2;
   DM dmnet;
 
   PetscErrorCode ierr;
@@ -38,10 +38,34 @@ int main(int argc,char **argv)
 
   ierr = CreateNetwork(&dmnet, &nb, &ng, &nl);CHKERRQ(ierr);
 
+  char loadFileName[100];
+  ierr = PetscOptionsGetString(NULL, NULL, "-loadDataP", loadFileName, 100, NULL);CHKERRQ(ierr);
 
-  char fileName[100];
-  ierr = PetscOptionsGetString(NULL, NULL, "-readFile", fileName, 100, NULL);CHKERRQ(ierr);
 
+  Mat loadDataP, loadDataQ;
+  PetscViewer loadView;
+  ierr = PetscViewerBinaryOpen(PETSC_COMM_WORLD, loadFileName, FILE_MODE_READ, &loadView);CHKERRQ(ierr);
+
+  ierr = MatCreate(PETSC_COMM_WORLD, &loadDataP);CHKERRQ(ierr);
+  ierr = MatSetType(loadDataP, MATMPIAIJ);CHKERRQ(ierr);
+  ierr = MatLoad(loadDataP, loadView);CHKERRQ(ierr);
+  ierr = PetscViewerDestroy(&loadView);CHKERRQ(ierr);
+
+  ierr = PetscOptionsGetString(NULL, NULL, "-loadDataQ", loadFileName, 100, NULL);CHKERRQ(ierr);
+  ierr = PetscViewerBinaryOpen(PETSC_COMM_WORLD, loadFileName, FILE_MODE_READ, &loadView);CHKERRQ(ierr);
+
+  ierr = MatCreate(PETSC_COMM_WORLD, &loadDataQ);CHKERRQ(ierr);
+  ierr = MatSetType(loadDataQ, MATMPIAIJ);CHKERRQ(ierr);
+  ierr = MatLoad(loadDataQ, loadView);CHKERRQ(ierr);
+  ierr = PetscViewerDestroy(&loadView);CHKERRQ(ierr);
+
+
+
+  
+
+
+  ierr = MatGetSize(loadDataP, NULL, &timeSteps);CHKERRQ(ierr);
+  //timeSteps = 2;
 
   Mat Cf, Ct, Yf, Yt, Ybus;
 
@@ -80,7 +104,7 @@ int main(int argc,char **argv)
   Mat dSf_dVa[timeSteps], dSf_dVm[timeSteps], dSt_dVm[timeSteps], dSt_dVa[timeSteps];
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nFirst Derivative\n====================\n");CHKERRQ(ierr);
   calcFirstDerivative(x, Ybus, dmnet, il, Yf, Yt, nl2, nb, ng, nl,
-    baseMVA, xmax, xmin, &h, &g, &dh, &dg, &gn, &hn, dSf_dVa, dSf_dVm, dSt_dVm, dSt_dVa, Sf, St);
+    baseMVA, xmax, xmin, loadDataP, loadDataQ, &h, &g, &dh, &dg, &gn, &hn, dSf_dVa, dSf_dVm, dSt_dVm, dSt_dVa, Sf, St);
 
 
   PetscInt neq, niq, neqnln, niqnln;
@@ -343,6 +367,8 @@ int main(int argc,char **argv)
     ierr = VecGetSize(negN, &Nsize);CHKERRQ(ierr);
     ierr = VecGetSize(negG, &gsize);CHKERRQ(ierr);
 
+    //VecView(negG, PETSC_VIEWER_STDOUT_WORLD);
+
     Vec bvecs[2] = {negN, negG};
     Vec B;
     ierr = stackNVectors(&B, bvecs, 2, Nsize + gsize);
@@ -354,10 +380,10 @@ int main(int argc,char **argv)
 	  ierr = MatDestroy(&dh_zinv);CHKERRQ(ierr);
 
     // PetscViewer matOut;
-    // PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/dg", FILE_MODE_WRITE, &matOut);
-    // MatView(dg, matOut);
+    // PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/B", FILE_MODE_WRITE, &matOut);
+    // VecView(B, matOut);
     // PetscViewerDestroy(&matOut);
-    //
+    
     // PetscViewerBinaryOpen(PETSC_COMM_WORLD, "outMats/W", FILE_MODE_WRITE, &matOut);
     // MatView(W, matOut);
     // PetscViewerDestroy(&matOut);
@@ -585,7 +611,7 @@ int main(int argc,char **argv)
     ierr = MatDestroy(&dg);CHKERRQ(ierr);
     
     calcFirstDerivative(x, Ybus, dmnet, il, Yf, Yt,
-	  nl2, nb, ng, nl, baseMVA, xmax, xmin, &h, &g, &dh, &dg, &gn, &hn, dSf_dVa,
+	  nl2, nb, ng, nl, baseMVA, xmax, xmin, loadDataP, loadDataQ, &h, &g, &dh, &dg, &gn, &hn, dSf_dVa,
 	  dSf_dVm, dSt_dVm, dSt_dVa, Sf, St);
 
     ierr = VecAYPX(lastX, -1, x);CHKERRQ(ierr);
@@ -597,18 +623,24 @@ int main(int argc,char **argv)
 
   ierr = PetscPrintf(PETSC_COMM_WORLD, "\nDone With Main Loop\n====================\n");CHKERRQ(ierr);
 
-  Vec xOut;
-  ierr = getVecIndices(x, nb * 2, nb * 2 + ng, &xOut);CHKERRQ(ierr);
+  xSize /= timeSteps;
+  for(int i = 0; i < timeSteps; i++)
+  {
+    PetscPrintf(PETSC_COMM_WORLD, "Time Step %d:\n", i);
+    Vec xOut;
+    ierr = getVecIndices(x, nb * 2 + xSize * i, nb * 2 + ng + xSize * i, &xOut);CHKERRQ(ierr);
 
-  VecView(xOut, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-
+    VecView(xOut, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+    ierr = VecDestroy(&xOut);CHKERRQ(ierr);
+  }
+  
 
 
   ierr = VecDestroy(&h);CHKERRQ(ierr);
   ierr = VecDestroy(&g);CHKERRQ(ierr);
   ierr = VecDestroy(&gn);CHKERRQ(ierr);
   ierr = VecDestroy(&hn);CHKERRQ(ierr);
-  ierr = VecDestroy(&xOut);CHKERRQ(ierr);
+  
   ierr = MatDestroy(&dh);CHKERRQ(ierr);
   ierr = MatDestroy(&dg);CHKERRQ(ierr);
   ierr = MatDestroy(&d2f);CHKERRQ(ierr);
@@ -642,6 +674,9 @@ int main(int argc,char **argv)
   ierr = ISDestroy(&k);CHKERRQ(ierr);
 
   ierr = DMDestroy(&dmnet);CHKERRQ(ierr);
+
+  ierr = MatDestroy(&loadDataP);CHKERRQ(ierr);
+  ierr = MatDestroy(&loadDataQ);CHKERRQ(ierr);
 
   ierr = PetscFinalize();CHKERRQ(ierr);
 
