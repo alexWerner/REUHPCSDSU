@@ -47,8 +47,8 @@ PetscErrorCode setupConstraints(DM net, PetscInt nb, PetscInt ng, Vec *x, Vec *x
           ierr = VecSetValue(*xmax, bus->internal_i, PETSC_INFINITY, INSERT_VALUES);CHKERRQ(ierr);
         }
 
-        ierr = VecSetValue(*xmin, bus->internal_i + nb, 0.9, INSERT_VALUES);CHKERRQ(ierr);
-        ierr = VecSetValue(*xmax, bus->internal_i + nb, 1.1, INSERT_VALUES);CHKERRQ(ierr);
+        ierr = VecSetValue(*xmin, bus->internal_i + nb, bus->vMin, INSERT_VALUES);CHKERRQ(ierr);
+        ierr = VecSetValue(*xmax, bus->internal_i + nb, bus->vMax, INSERT_VALUES);CHKERRQ(ierr);
 
 
       } else if (key == 2)

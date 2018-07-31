@@ -43,6 +43,8 @@ struct _p_VERTEX_Power{
   PetscInt      gidx[NGEN_AT_BUS_MAX]; /* list of indices for accessing the generator data in GEN structure */
   PetscInt      nload;
   PetscInt      lidx[NLOAD_AT_BUS_MAX];
+  PetscScalar vMax;
+  PetscScalar vMin;
 } PETSC_ATTRIBUTEALIGNED(sizeof(PetscScalar));
 
 typedef struct _p_VERTEX_Power *VERTEX_Power;

@@ -86,15 +86,18 @@ PetscErrorCode PFReadMatPowerData(PFDATA *pf,char *filename)
 
     if ((i >= bus_start_line) && (i < bus_end_line))
     {
-      double gl,bl,vm,va,basekV;
-      int    bus_i,ide,area;
+      double gl,bl,vm,va,basekV, vMax, vMin;
+      int    bus_i,ide,area, zone;
       /* Bus data */
-      sscanf(line,"%d %d %lf %lf %lf %lf %d %lf %lf %lf",&bus_i,&ide,&Pd,&Qd,&gl,&bl,&area,&vm,&va,&basekV);
+      //PetscPrintf(PETSC_COMM_WORLD, line);
+      sscanf(line,"%d %d %lf %lf %lf %lf %d %lf %lf %lf %d %lf %lf",&bus_i,&ide,&Pd,&Qd,&gl,&bl,&area,&vm,&va,&basekV, &zone, &vMax, &vMin);
       Bus[busi].bus_i = bus_i; Bus[busi].ide = ide; Bus[busi].area = area;
       Bus[busi].gl = gl; Bus[busi].bl = bl;
       //PetscPrintf(PETSC_COMM_WORLD, "bl|%f\n", Bus[busi].bl);
       Bus[busi].vm = vm; Bus[busi].va = va; Bus[busi].basekV = basekV;
       Bus[busi].internal_i = busi;
+      Bus[busi].vMax = vMax; Bus[busi].vMin = vMin;
+      //PetscPrintf(PETSC_COMM_WORLD, "Max %f \n", Bus[busi].vMax);
       busext2intmap[Bus[busi].bus_i] = busi;
 
       if (!((Pd == 0.0) && (Qd == 0.0)))
