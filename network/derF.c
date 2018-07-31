@@ -256,7 +256,7 @@ PetscErrorCode calcFirstDerivative(Vec x, Mat Ybus, DM net, IS il, Mat Yf,
     ierr = VecSetValue(flowTemp, edge->idx, (edge->rateA * edge->rateA / baseMVA / baseMVA), INSERT_VALUES);CHKERRQ(ierr);
   }
   ierr = VecAssemblyBegin(flowTemp);CHKERRQ(ierr);
-  ierr = VecAssemblyBegin(flowTemp);CHKERRQ(ierr);
+  ierr = VecAssemblyEnd(flowTemp);CHKERRQ(ierr);
 
   ierr = getSubVector(flowTemp, il, &flow_max);CHKERRQ(ierr);
   ierr = VecDestroy(&flowTemp);CHKERRQ(ierr);
